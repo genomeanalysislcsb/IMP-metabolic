@@ -59,6 +59,8 @@ def main(argv=None):
     m.add_argument("--out", required=True)
     m.add_argument("--methods", default="ec,rn", help="evidence paths: ec, rn or both [ec,rn]")
     m.add_argument("--partial-ec", action="store_true", help="also use partial ECs (1.3.99.-)")
+    m.add_argument("--max-ec-reactions", type=int, default=10, help="an EC link is 'specific' when the EC stands "
+                   "for at most this many MetaNetX reactions, else 'broad' [10]")
     m.add_argument("--threads", type=int, default=4)
     m.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
 
@@ -72,6 +74,8 @@ def main(argv=None):
                    "MNXM ids; 'default' = minimal glucose medium; 'none' = no scope)")
     n.add_argument("--graphml", action="store_true", help="also write every network as GraphML (Cytoscape)")
     n.add_argument("--bin-hubs", action="store_true", help="hub metabolites also for every MAG network")
+    n.add_argument("--sets", default="specific,all", help="reaction sets analysed: specific (links with KEGG-reaction "
+                   "evidence or specific ECs) and / or all [specific,all]")
     n.add_argument("--threads", type=int, default=4)
     n.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     a = ap.parse_args(argv)
@@ -97,13 +101,13 @@ def main(argv=None):
         if not s:
             sys.exit("no samples found")
         err = map_samples(s, a.refdb, a.out, [x for x in a.methods.split(",") if x], a.partial_ec, a.threads,
-                          a.format)
+                          a.format, a.max_ec_reactions)
         return 2 if err else 0
     if a.cmd == "networks":
         from .networks import SEEDS, run
         seeds = SEEDS if a.seeds == "default" else (None if a.seeds == "none" else a.seeds)
         run(a.mapping, a.refdb, a.out, a.rank, tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
-            a.threads)
+            a.threads, tuple(x for x in a.sets.split(",") if x))
         return 0
     return 1
 

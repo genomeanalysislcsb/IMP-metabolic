@@ -34,6 +34,32 @@ def parse_equation(eq):
     return parse_side(left), parse_side(right)
 
 
+PROTON = "MNXM1"
+
+
+def reaction_groups(reactions, ignore=(PROTON,)):
+    """MetaNetX reactions that are the same conversion: the same metabolites on the two sides, ignoring
+    compartments, coefficients, direction and protons (transports keep their compartments).
+    -> Series mnx_id -> group id (the smallest MNXR id of the group)"""
+    keys = {}
+    for r, eq in zip(reactions["mnx_id"], reactions["equation"]):
+        a, b = parse_equation(eq)
+        sa = tuple(sorted({m for _, m, _ in a if m not in ignore}))
+        sb = tuple(sorted({m for _, m, _ in b if m not in ignore}))
+        if sa == sb:                                   # transport: keep the compartments
+            sa = tuple(sorted("%s@%s" % (m, c) for _, m, c in a))
+            sb = tuple(sorted("%s@%s" % (m, c) for _, m, c in b))
+        keys[r] = (sa, sb) if sa <= sb else (sb, sa)
+    k = pd.Series(keys)
+    if k.empty:
+        return pd.Series(dtype=str)
+    order = pd.Series(k.index, index=k.index).str.extract(r"(\d+)$", expand=False).astype(float)
+    df = pd.DataFrame({"key": k.astype(str), "order": order}).sort_values("order")
+    first = df[~df["key"].duplicated()]
+    rep = pd.Series(first.index, index=first["key"].values)
+    return df["key"].map(rep)
+
+
 class MetabolicNetwork(nx.DiGraph):
     def add_reaction(self, rxn_id, equation, **attrs):
         reactants, products = parse_equation(equation)

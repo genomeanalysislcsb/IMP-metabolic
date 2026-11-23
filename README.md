@@ -54,6 +54,14 @@ files that can be versioned and shared.
 | `ec` | `ec:EC`, `ec:KO`, `ec:RN` | the gene's ECs; without them the ECs of its KOs; without those the ECs of its KEGG reactions → MetaNetX reactions with that EC (partial ECs such as 1.3.99.- left out unless `--partial-ec`) |
 | `rn` | `rn:RN`, `rn:KO` | the gene's KEGG reactions and those of its KOs → MetaNetX reactions through MetaNetX's KEGG cross-references (more specific: one EC often stands for many reactions) |
 
+Each link gets a confidence: **specific** with KEGG-reaction evidence or through an EC that stands for at most
+`--max-ec-reactions` MetaNetX reactions (default 10), **broad** when it is only reached through ECs with many
+reactions (in a gut sample about 16 % of the ECs, e.g. 1.2.1.5 or 1.1.1.1, account for ~60 % of the MetaNetX
+reactions: their substrate variants). Broad links are kept, since a wide annotation beyond core metabolism is
+the point, and every network is analysed for the specific and for all reactions. MetaNetX reactions that are the
+same conversion (same metabolites in another compartment, with other protons or coefficients) are counted as one
+reaction group.
+
 Contig → MAG from `Binning/MetaWrap/bins.contigs`, MAG quality and GTDB taxonomy from `Stats/all_bin_stats.tsv`,
 reads per gene (metaG, metaT) from `Stats/<omic>/gene_read_count.txt`.
 
@@ -66,11 +74,11 @@ thermodynamics are added; the scope treats reactions as reversible by default. F
 
 | directory / table | content |
 |---|---|
-| `mapping/samples/<id>/gene_reactions` | gene, contig, bin, MetaNetX reaction, evidence, via (EC / KEGG reaction), metaG and metaT reads |
-| `mapping/community_reactions` | sample × reaction: genes, metaG and metaT reads |
+| `mapping/samples/<id>/gene_reactions` | gene, contig, bin, MetaNetX reaction and its group, evidence, via (EC / KEGG reaction), confidence, metaG and metaT reads |
+| `mapping/community_reactions` | sample × reaction group: genes (all / specific), confidence, MetaNetX variants, metaG and metaT reads |
 | `mapping/bin_reactions` | sample × MAG × reaction: the same per MAG |
 | `mapping/bins`, `mapping/stats` | MAG quality and taxonomy; genes mapped per evidence path |
-| `networks/topology` | one row per network (community, MAG, pan-reactome): reactions, metabolites, components, share in the largest component, mean degree, clustering, mean path length, scope size |
+| `networks/topology` | one row per reaction set (specific / all) and network (community, MAG, pan-reactome): reactions, metabolites, components, share in the largest component, mean degree, clustering, mean path length, scope size |
 | `networks/hubs` | metabolites with the highest betweenness per community / pan-reactome network |
 | `networks/pan_reactome`, `pan_summary` | taxon × reaction: MAGs carrying it, share, core / accessory / rare; per taxon pan, core and accessory sizes |
 | `networks/scope` | metabolites reachable from the seeds (default: minimal glucose medium, `impmetabolic/data/seeds_minimal.tsv`) |

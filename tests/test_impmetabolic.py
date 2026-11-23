@@ -25,7 +25,7 @@ def setup(tmp):
 def test_refdb_build(tmp_path):
     _, refdb, _ = setup(tmp_path)
     r = read_table(refdb, "reactions")
-    assert len(r) == 6 and set(r.columns) >= {"mnx_id", "equation", "ec_list", "is_transport"}
+    assert len(r) == 8 and set(r.columns) >= {"mnx_id", "equation", "ec_list", "is_transport"}
     assert set(read_table(refdb, "reaction_ec")["ec"]) == {"2.7.1.1", "5.3.1.9", "2.7.1.11", "4.1.2.13", "1.1.1.1"}
     assert set(read_table(refdb, "kegg_to_mnx_reaction")["source_id"]) == {"R00299", "R02740", "R04779", "R01068",
                                                                            "R00754"}
@@ -60,37 +60,54 @@ def test_map_and_networks(tmp_path):
     assert ev["S1_G5>MNXR5"] == "ec:KO,rn:KO"
     assert not gr["gene"].isin(["S1_G6", "S1_G7"]).any()   # partial EC, no annotation
     assert set(gr.loc[gr["gene"] == "S1_G1", "bin_id"]) == {"S1:bin.1"}
+    assert set(gr.loc[gr["mnx_id"] == "MNXR6", "group_id"]) == {"MNXR2"}            # same conversion
     com = read_table(mp_, "community_reactions")
-    assert set(com.loc[com["sample_id"] == "S1", "mnx_id"]) == {"MNXR1", "MNXR2", "MNXR3", "MNXR4", "MNXR5"}
+    c1 = com[com["sample_id"] == "S1"].set_index("mnx_id")
+    assert set(c1.index) == {"MNXR1", "MNXR2", "MNXR3", "MNXR4", "MNXR5", "MNXR7"}   # MNXR6 in the MNXR2 group
+    assert c1.loc["MNXR2", "variants"] == "2" and (c1["confidence"] == "specific").all()
     r1 = com[(com["sample_id"] == "S1") & (com["mnx_id"] == "MNXR1")].iloc[0]
     assert float(r1["mg_reads"]) == 10 and float(r1["mt_reads"]) == 30
     br = read_table(mp_, "bin_reactions")
     assert set(br.loc[br["bin_id"] == "S1:bin.1", "mnx_id"]) == {"MNXR1", "MNXR2", "MNXR3"}
-    assert set(br.loc[br["bin_id"] == "S1:bin.2", "mnx_id"]) == {"MNXR4", "MNXR5"}
+    assert set(br.loc[br["bin_id"] == "S1:bin.2", "mnx_id"]) == {"MNXR4", "MNXR5", "MNXR7"}
     st = read_table(mp_, "stats")
     assert int(st.loc[st["sample_id"] == "S1", "genes_with_reaction"].iloc[0]) == 5
-    assert int(st.loc[st["sample_id"] == "S1", "reactions_ec_only"].iloc[0]) == 0
+    assert int(st.loc[st["sample_id"] == "S1", "reactions_ec_only"].iloc[0]) == 2          # MNXR6, MNXR7
     # partial ECs on request: G6 then maps nowhere still (no 1.1.1.- reaction), but nothing breaks
     assert cli(["map", "--refdb", refdb, "--imp-root", root, "--out", str(tmp_path / "map2"), "--threads", "1",
                 "--format", "tsv", "--methods", "ec", "--partial-ec"]) == 0
+    # ECs with more than one reaction count as broad: MNXR7 (only via EC 1.1.1.1) broad, MNXR5 (KEGG) specific
+    m3 = str(tmp_path / "map3")
+    assert cli(["map", "--refdb", refdb, "--imp-root", root, "--out", m3, "--threads", "1", "--format", "tsv",
+                "--max-ec-reactions", "1"]) == 0
+    c3 = read_table(m3, "community_reactions")
+    c3 = c3[c3["sample_id"] == "S1"].set_index("mnx_id")["confidence"]
+    assert c3["MNXR7"] == "broad" and c3["MNXR5"] == "specific" and c3["MNXR2"] == "specific"
+    n3 = str(tmp_path / "nets3")
+    assert cli(["networks", "--mapping", m3, "--refdb", refdb, "--out", n3, "--format", "tsv", "--threads", "1"]) == 0
+    t3 = read_table(n3, "topology")
+    t3 = dict(zip(t3["set"] + ">" + t3["level"] + ">" + t3["id"], t3["reactions"]))
+    assert t3["specific>community>S1"] == "5" and t3["all>community>S1"] == "6"
 
     nets = str(tmp_path / "nets")
     assert cli(["networks", "--mapping", mp_, "--refdb", refdb, "--out", nets, "--format", "tsv",
                 "--graphml", "--threads", "2"]) == 0
     t = read_table(nets, "topology")
+    t = t[t["set"] == "all"]
     lv = dict(zip(t["level"] + ">" + t["id"], t["reactions"]))
-    assert lv["community>S1"] == "5" and lv["bin>S1:bin.1"] == "3"
+    assert lv["community>S1"] == "6" and lv["bin>S1:bin.1"] == "3"
     assert "bin>S1:bin.2" in lv                            # medium-quality MAG
     assert lv["pan_species>Bacteroides uniformis"] == "3"   # 2 MAGs (S1, S2); bin.2 has no species name
     pan = read_table(nets, "pan_reactome")
+    pan = pan[pan["set"] == "all"]
     assert (pan["class"] == "core").all() and set(pan["n_mags"]) == {"2"}
     sc = read_table(nets, "scope")
-    s1 = set(sc.loc[(sc["level"] == "community") & (sc["id"] == "S1"), "metabolite"])
+    s1 = set(sc.loc[(sc["set"] == "all") & (sc["level"] == "community") & (sc["id"] == "S1"), "metabolite"])
     assert {"MNXM100", "MNXM101", "MNXM102", "MNXM103", "MNXM104"} <= s1   # glucose -> triose phosphates
     assert "MNXM106" not in s1                              # no ethanol in the seeds
     cov = read_table(nets, "mag_coverage")
-    assert float(cov.loc[cov["sample_id"] == "S1", "share_in_mags"].iloc[0]) == 1.0
-    assert os.path.exists(os.path.join(nets, "graphml", "community", "S1.graphml"))
+    assert float(cov.loc[(cov["sample_id"] == "S1") & (cov["set"] == "all"), "share_in_mags"].iloc[0]) == 1.0
+    assert os.path.exists(os.path.join(nets, "graphml", "all", "community", "S1.graphml"))
 
 
 def test_topology_and_currency():

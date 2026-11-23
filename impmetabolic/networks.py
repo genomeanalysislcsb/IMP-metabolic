@@ -40,32 +40,33 @@ def _init(reactions, currency, seed_ids, out, graphml):
 
 def analyse(job):
     """one network: (level, id, sample, reaction ids, hubs?) -> (topology row, hubs table, scope table)"""
-    level, nid, sample, rxns, hubs_too = job
+    level, nid, sample, rxns, hubs_too, rset = job
     net = network.build(rxns, _W["eq"])
     light = level == "bin"                             # many MAG networks: fewer path-length roots
     s = topology.summary(net, _W["currency"], path_sources=50 if light else 200)
-    s.update(level=level, id=nid, sample_id=sample)
+    s.update(level=level, id=nid, sample_id=sample, set=rset)
     sc_tab = None
     if _W["seeds"]:
         sc, fired = topology.scope(net, _W["seeds"])
         s["scope_metabolites"] = len(sc - _W["seeds"])
         s["scope_reactions"] = len(fired)
         s["scope_reaction_share"] = len(fired) / max(1, len(net.reactions()))
-        sc_tab = pd.DataFrame({"level": level, "id": nid, "metabolite": sorted(sc - _W["seeds"])})
+        sc_tab = pd.DataFrame({"set": rset, "level": level, "id": nid, "metabolite": sorted(sc - _W["seeds"])})
     h = None
     if hubs_too:
         h = topology.hubs(net, _W["currency"])
         h.insert(0, "id", nid)
         h.insert(0, "level", level)
+        h.insert(0, "set", rset)
     if _W["graphml"]:
-        d = os.path.join(_W["out"], "graphml", level)
+        d = os.path.join(_W["out"], "graphml", rset, level)
         os.makedirs(d, exist_ok=True)
         net.to_graphml(os.path.join(d, "%s.graphml" % re.sub(r"[^\w.-]+", "_", str(nid))))
     return s, h, sc_tab
 
 
 def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEEDS, graphml=False, fmt="auto",
-        bin_hubs=False, threads=4):
+        bin_hubs=False, threads=4, sets=("specific", "all")):
     reactions = read_table(refdb, "reactions", columns=["mnx_id", "equation"])
     currency = set(read_table(refdb, "currency", required=False).get("mnx_id", pd.Series(dtype=str)))
     mets = read_table(refdb, "metabolites", columns=["mnx_id", "name"], required=False)
@@ -76,16 +77,31 @@ def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEE
     for c in ("completeness", "contamination"):
         bins[c] = pd.to_numeric(bins[c], errors="coerce")
     q = bins[bins["quality"].isin(tiers)]
-    brq = br[br["bin_id"].isin(q["bin_id"])]
-    pan, pan_sum = pangenome.pan_reactome(br, bins, rank, tiers)
+    if "confidence" not in com.columns:                          # mappings of 0.1.0.dev0 before the confidence
+        com["confidence"] = br["confidence"] = "specific"
+        sets = ("all",)
     used = set(com["mnx_id"]) | set(br["mnx_id"])
     reactions = reactions[reactions["mnx_id"].isin(used)]          # workers get only the reactions needed
-    jobs = [("community", sid, sid, list(g["mnx_id"]), True) for sid, g in com.groupby("sample_id")]
-    jobs += [("bin", bid, bid.split(":")[0], list(g["mnx_id"]), bin_hubs) for bid, g in brq.groupby("bin_id")]
-    jobs += [("pan_" + rank, tax, "", list(g["mnx_id"]), True) for tax, g in pan.groupby("taxon")]
-    log.info("%d networks: %d communities, %d MAGs (%s), %d pan-reactomes (%s with >= 2 MAGs); %d threads",
-             len(jobs), com["sample_id"].nunique(), brq["bin_id"].nunique(), ", ".join(tiers),
-             pan["taxon"].nunique(), rank, threads)
+    jobs, pans, pan_sums, cov = [], [], [], []
+    for rset in sets:
+        c = com if rset == "all" else com[com["confidence"] == "specific"]
+        b = br if rset == "all" else br[br["confidence"] == "specific"]
+        bq = b[b["bin_id"].isin(q["bin_id"])]
+        pan, pan_sum = pangenome.pan_reactome(b, bins, rank, tiers)
+        pans.append(pan.assign(set=rset))
+        pan_sums.append(pan_sum.assign(set=rset))
+        jobs += [("community", sid, sid, list(g["mnx_id"]), True, rset) for sid, g in c.groupby("sample_id")]
+        jobs += [("bin", bid, bid.split(":")[0], list(g["mnx_id"]), bin_hubs, rset) for bid, g in bq.groupby("bin_id")]
+        jobs += [("pan_" + rank, tax, "", list(g["mnx_id"]), True, rset) for tax, g in pan.groupby("taxon")]
+        # share of the community's reactions found in its MAGs
+        cv = c.groupby("sample_id")["mnx_id"].nunique().rename("community_reactions").to_frame()
+        cv["in_mags"] = bq.groupby("sample_id")["mnx_id"].nunique()
+        cv["in_mags"] = cv["in_mags"].fillna(0).astype(int)
+        cv["share_in_mags"] = cv["in_mags"] / cv["community_reactions"]
+        cov.append(cv.reset_index().assign(set=rset))
+        log.info("%s reactions: %d communities, %d MAGs (%s), %d pan-reactomes (%s with >= 2 MAGs)", rset,
+                 c["sample_id"].nunique(), bq["bin_id"].nunique(), ", ".join(tiers), pan["taxon"].nunique(), rank)
+    log.info("%d networks, %d threads", len(jobs), threads)
     topo, hub_rows, scopes = [], [], []
     with cf.ProcessPoolExecutor(max_workers=max(1, threads), mp_context=mp.get_context("spawn"),
                                 initializer=_init, initargs=(reactions, currency, seed_ids, out, graphml)) as ex:
@@ -97,16 +113,13 @@ def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEE
             if sc is not None:
                 scopes.append(sc)
             if i % step == 0 or i == len(jobs):
-                log.info("%d/%d networks (%s %s: %d reactions)", i, len(jobs), s["level"], s["id"], s["reactions"])
-    # share of the community's reactions found in its MAGs
-    cov = com.groupby("sample_id")["mnx_id"].nunique().rename("community_reactions").to_frame()
-    cov["in_mags"] = brq.groupby("sample_id")["mnx_id"].nunique()
-    cov["in_mags"] = cov["in_mags"].fillna(0).astype(int)
-    cov["share_in_mags"] = cov["in_mags"] / cov["community_reactions"]
+                log.info("%d/%d networks (%s, %s %s: %d reactions)", i, len(jobs), s["set"], s["level"], s["id"],
+                         s["reactions"])
     tabs = {"topology": pd.DataFrame(topo), "hubs": pd.concat(hub_rows, ignore_index=True) if hub_rows else
-            pd.DataFrame(), "pan_reactome": pan, "pan_summary": pan_sum, "mag_coverage": cov.reset_index(),
+            pd.DataFrame(), "pan_reactome": pd.concat(pans, ignore_index=True),
+            "pan_summary": pd.concat(pan_sums, ignore_index=True), "mag_coverage": pd.concat(cov, ignore_index=True),
             "scope": pd.concat(scopes, ignore_index=True) if scopes else pd.DataFrame()}
-    first = ["level", "id", "sample_id"]
+    first = ["set", "level", "id", "sample_id"]
     tabs["topology"] = tabs["topology"][first + [c for c in tabs["topology"].columns if c not in first]]
     rows = {}
     for k, v in tabs.items():
@@ -114,5 +127,6 @@ def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEE
         rows[k] = int(len(v))
     write_manifest(out, "networks", rows, {"mapping": os.path.abspath(mapping), "refdb": os.path.abspath(refdb),
                                            "rank": rank, "tiers": list(tiers), "seeds": seeds or "",
+                                           "sets": list(sets),
                                            "currency": sorted(currency)})
     return tabs

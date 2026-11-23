@@ -13,9 +13,12 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Mapping** (`imp-metabolic map`): genes of IMP3 samples -> MetaNetX reactions through the prototype's EC cascade
   (EC, else KO -> EC, else KEGG reaction -> EC; partial ECs left out) and through KEGG reactions (the gene's and its
   KOs') with MetaNetX's KEGG cross-references; evidence per gene and reaction; contig, MAG and metaG / metaT reads
-  per gene; reactions of the community and of each MAG.
+  per gene; reactions of the community and of each MAG. Each gene–reaction link is *specific* (KEGG-reaction
+  evidence, or an EC standing for at most `--max-ec-reactions` MetaNetX reactions, default 10) or *broad* (only
+  through ECs with many substrate variants); MetaNetX reactions that are the same conversion (other compartment,
+  protons, coefficients) form one reaction group in the community and MAG tables.
 - **Networks** (`imp-metabolic networks`): bipartite metabolite-reaction networks (the prototype's
   `MetabolicNetwork`) of each community, each MAG and each GTDB species' pan-reactome (core / accessory / rare
   reactions); topology without currency metabolites (size, components, degree, clustering, path length, hub
   metabolites by betweenness), scope expansion from seed metabolites, share of the community's reactions in its
-  MAGs; GraphML export.
+  MAGs; GraphML export. Analysed for the specific and for all reactions (`--sets`), in parallel (`--threads`).

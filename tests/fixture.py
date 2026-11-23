@@ -1,6 +1,6 @@
 """Synthetic reference files (in the formats of MetaNetX and KEGG REST) and IMP3 sample folders for the tests.
 
-Reactions: a glycolysis fragment R1-R4 and an alcohol dehydrogenase R5. Two samples; bin.1 (Bacteroides uniformis,
+Reactions: a glycolysis fragment R1-R4 and an alcohol dehydrogenase R5 (+ R6, R7, see EXTRA). Two samples; bin.1 (Bacteroides uniformis,
 in both samples) carries R1-R3, bin.2 R4 (only through its KEGG reaction) and R5; an unbinned gene has only a
 partial EC (1.1.1.-) and maps to nothing."""
 import os
@@ -10,7 +10,11 @@ METS = [("MNXM1", "H(+)"), ("WATER", "H2O"), ("MNXM3", "ATP"), ("MNXM7", "ADP"),
         ("MNXM10", "NADH"), ("MNXM99", "D-glucose"), ("MNXM100", "D-glucose 6-phosphate"),
         ("MNXM101", "D-fructose 6-phosphate"), ("MNXM102", "D-fructose 1,6-bisphosphate"),
         ("MNXM103", "dihydroxyacetone phosphate"), ("MNXM104", "D-glyceraldehyde 3-phosphate"),
-        ("MNXM105", "ethanol"), ("MNXM106", "acetaldehyde")]
+        ("MNXM105", "ethanol"), ("MNXM106", "acetaldehyde"), ("MNXM107", "1-propanol"), ("MNXM108", "propanal")]
+# MetaNetX reactions without KEGG cross-reference: MNXR6 is MNXR2 in another compartment (one reaction group),
+# MNXR7 a second substrate of EC 1.1.1.1 (reached only through the EC)
+EXTRA = [("MNXR6", "1 MNXM100@MNXD2 = 1 MNXM101@MNXD2", "5.3.1.9"),
+         ("MNXR7", "1 MNXM107@MNXD1 + 1 MNXM8@MNXD1 = 1 MNXM108@MNXD1 + 1 MNXM10@MNXD1 + 1 MNXM1@MNXD1", "1.1.1.1")]
 RXNS = [("MNXR1", "1 MNXM99@MNXD1 + 1 MNXM3@MNXD1 = 1 MNXM100@MNXD1 + 1 MNXM7@MNXD1 + 1 MNXM1@MNXD1", "2.7.1.1",
          "R00299", "K00844"),
         ("MNXR2", "1 MNXM100@MNXD1 = 1 MNXM101@MNXD1", "5.3.1.9", "R02740", "K01810"),
@@ -31,6 +35,7 @@ def reference(data):
     m = os.path.join(data, "metanetx", "latest")
     w(os.path.join(m, "reac_prop.tsv"), MNX_HEAD + "#ID\tmnx_equation\treference\tclassifs\tis_balanced\tis_transport\n" +
       "".join("%s\t%s\tkeggR:%s\t%s\tB\t\n" % (r, eq, rn, ec) for r, eq, ec, rn, ko in RXNS) +
+      "".join("%s\t%s\tmnx:%s\t%s\tB\t\n" % (r, eq, r, ec) for r, eq, ec in EXTRA) +
       "MNXR9\t1 MNXM99@MNXD2 = 1 MNXM99@MNXD1\tmnx:MNXR9\t\tB\tT\n")
     w(os.path.join(m, "reac_xref.tsv"), MNX_HEAD + "#source\tID\tdescription\n" +
       "".join("keggR:%s\t%s\tx\nkegg.reaction:%s\t%s\tx\n" % (rn, r, rn, r) for r, eq, ec, rn, ko in RXNS))
