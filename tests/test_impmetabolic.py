@@ -33,6 +33,11 @@ def test_refdb_build(tmp_path):
     cur = set(read_table(refdb, "currency")["name"])
     assert {"ATP", "H(+)", "H2O", "NAD(+)"} <= cur and "D-glucose" not in cur
     assert read_manifest(refdb)["metanetx_version"] == "4.4"
+    sc = read_table(os.path.join(refdb, "raw"), "seed_compounds")          # parts concatenated
+    assert list(sc["id"]) == ["cpd00001", "cpd00002"] and len(read_table(os.path.join(refdb, "raw"), "seed_reactions")) == 1
+    from impmetabolic.refdb.download import plan
+    urls = [u for u, _ in plan(str(tmp_path / "x"), ["seed"])]
+    assert len(urls) == 111 and all("/refs/tags/v2.1.0/Biochemistry/" in u for u in urls)
 
 
 def test_equation_parser():

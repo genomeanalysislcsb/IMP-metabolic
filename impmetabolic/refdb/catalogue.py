@@ -271,6 +271,9 @@ def load_chebi_file(file_path: Path) -> pd.DataFrame:
     )
 
 
+SEED_RELEASE = 'v2.1.0'
+SEED_PARTS = (50, 61)          # compound_NN.tsv, reaction_NN.tsv files of that release
+
 # All specified files are downloaded but only those with
 # available loader are used for the SQL DB construction:
 DATA_CATALOGUE = (
@@ -461,15 +464,17 @@ DATA_CATALOGUE = (
     # ]
     SourceGroup(
         database='seed',
-        base_url='https://raw.githubusercontent.com/ModelSEED/ModelSEEDDatabase/refs/heads/master',
+        # release v2.1.0 (2026-10): compounds and reactions split into parts (compound_00.tsv ...); parts with the
+        # same key are concatenated by the build. Pinned to the tag so the part list stays valid.
+        base_url='https://raw.githubusercontent.com/ModelSEED/ModelSEEDDatabase/refs/tags/' + SEED_RELEASE,
         file_groups=(
             FileGroup(
-                local_subdir='',
+                local_subdir=SEED_RELEASE,
                 remote_path='Biochemistry/',
-                files=(
-                    File(name='compounds.tsv', key='seed_compounds', loader=make_csv_loader()),
-                    File(name='reactions.tsv', key='seed_reactions', loader=make_csv_loader())
-                )
+                files=tuple(File(name='compound_%02d.tsv' % i, key='seed_compounds', loader=make_csv_loader())
+                            for i in range(SEED_PARTS[0])) +
+                tuple(File(name='reaction_%02d.tsv' % i, key='seed_reactions', loader=make_csv_loader())
+                      for i in range(SEED_PARTS[1]))
             ),
         )
     ),

@@ -38,6 +38,10 @@ def reference(data):
       + "".join("%s\t%s\tmnx:%s\tX\t0\t1\t\t\t\n" % (i, n, i) for i, n in METS))
     w(os.path.join(m, "chem_xref.tsv"), MNX_HEAD + "#source\tID\tdescription\n" +
       "".join("mnx:%s\t%s\t%s\n" % (i, i, n) for i, n in METS))
+    sd = os.path.join(data, "seed", "v2.1.0")            # ModelSEED v2.1.0: tables in parts
+    w(os.path.join(sd, "compound_00.tsv"), "id\tname\tis_cofactor\ncpd00001\tH2O\t1\n")
+    w(os.path.join(sd, "compound_01.tsv"), "id\tname\tis_cofactor\ncpd00002\tATP\t1\n")
+    w(os.path.join(sd, "reaction_00.tsv"), "id\tname\treversibility\nrxn00001\tx\t>\n")
     k = os.path.join(data, "kegg")
     w(os.path.join(k, "link_enzyme", "orthology"), "".join("ko:%s\tec:%s\n" % (ko, ec) for _, _, ec, _, ko in RXNS))
     w(os.path.join(k, "link_enzyme", "reaction"), "".join("rn:%s\tec:%s\n" % (rn, ec) for _, _, ec, rn, _ in RXNS))

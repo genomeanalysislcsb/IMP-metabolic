@@ -64,12 +64,18 @@ def load_all(data_dir, sources=None):
                     continue
                 log.info("loading %s", p)
                 res = f.loader(__import__("pathlib").Path(p))
-                files[f.key] = {"file": os.path.relpath(p, data_dir), "bytes": os.path.getsize(p),
-                                "mtime": int(os.path.getmtime(p))}
-                if isinstance(res, pd.DataFrame):
-                    out[f.key] = res
-                else:
+                if f.key not in files:
+                    files[f.key] = {"file": os.path.relpath(p, data_dir), "bytes": 0, "mtime": 0}
+                files[f.key]["bytes"] += os.path.getsize(p)
+                files[f.key]["mtime"] = max(files[f.key]["mtime"], int(os.path.getmtime(p)))
+                if not isinstance(res, pd.DataFrame):
                     out.update(res)
+                elif f.key in out:              # parts of one table (ModelSEED compound_00.tsv, ...)
+                    out[f.key] = pd.concat([out[f.key], res], ignore_index=True)
+                    files[f.key]["file"] += "," + os.path.basename(p)
+                    continue
+                else:
+                    out[f.key] = res
     return out, files
 
 
