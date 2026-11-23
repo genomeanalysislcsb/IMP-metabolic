@@ -79,17 +79,25 @@ def load_all(data_dir, sources=None):
     return out, files
 
 
-def metanetx_version(data_dir):
+def metanetx_header(data_dir):
+    """comment lines at the top of MetaNetX reac_prop.tsv (licence, version / release date)"""
     p = os.path.join(data_dir, "metanetx", "latest", "reac_prop.tsv")
-    if not os.path.exists(p):
-        return ""
-    with open(p) as fh:
-        for ln in fh:
-            if not ln.startswith("#"):
-                break
-            m = re.search(r"(MNXref|MetaNetX)\s+[Vv]ersion\s*:?\s*([\w.]+)", ln)
-            if m:
-                return m.group(2)
+    out = []
+    if os.path.exists(p):
+        with open(p) as fh:
+            for ln in fh:
+                if not ln.startswith("#") or len(out) >= 20:
+                    break
+                out.append(ln.strip("#\n ").strip())
+    return [x for x in out if x]
+
+
+def metanetx_version(header):
+    """the version from the header lines ('MNXref Version 4.4', 'Version: 2025/03/03', 'release ...')"""
+    for ln in header:
+        m = re.search(r"(?:version|release)\s*[:=]?\s*([0-9][\w./-]*)", ln, re.I)
+        if m:
+            return m.group(1)
     return ""
 
 
@@ -138,5 +146,7 @@ def build(data_dir, out_dir, sources=None, fmt="auto", raw=True):
         write_table(df, os.path.join(out_dir, "raw") if name in t and name not in d else out_dir, name, fmt)
         rows[name] = int(len(df))
         log.info("%-40s %10d rows", name, len(df))
-    return write_manifest(out_dir, "refdb", rows, {"metanetx_version": metanetx_version(data_dir), "files": files,
+    head = metanetx_header(data_dir)
+    return write_manifest(out_dir, "refdb", rows, {"metanetx_version": metanetx_version(head),
+                                                   "metanetx_header": head, "files": files,
                                                    "data_dir": os.path.abspath(data_dir)})

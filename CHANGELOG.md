@@ -2,7 +2,7 @@
 
 ## 0.1.0.dev0 (unreleased)
 
-First version, built on the metabolic-network prototype (Artem Kokorin, LCSB).
+First version, built on the metabolic-network prototype (Artem Kokorin and Marie Mahieux, LCSB).
 
 - **Reference database** (`imp-metabolic refdb download | build`): the prototype's catalogue (MetaNetX, KEGG REST,
   ModelSEED, BiGG, MetaCyc via gapseq, Rhea, ECDomainMiner, TCDB, ChEBI); one Parquet table per source table

@@ -1,4 +1,4 @@
-"""Bipartite metabolite-reaction network (ported from the metabolic-network prototype, A. Kokorin).
+"""Bipartite metabolite-reaction network (ported from the metabolic-network prototype, A. Kokorin and M. Mahieux).
 
 Nodes: reactions (MetaNetX MNXR ids) and metabolites (MET@COMPARTMENT, e.g. MNXM3@MNXD1); edges substrate ->
 reaction -> product with the stoichiometric coefficient. MetaNetX equations are undirected: the direction of the

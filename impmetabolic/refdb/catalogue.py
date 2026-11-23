@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Catalogue of the reference data: where each file is downloaded from and how it is loaded into a table.
 
-Ported from metabolic-network (Artem Kokorin, LCSB) data_catalogue.py; optional loaders (MetaCyc .rda via
+Ported from metabolic-network (Artem Kokorin and Marie Mahieux, LCSB) data_catalogue.py; optional loaders (MetaCyc .rda via
 pyreadr, ChEBI SDF via RDKit) import their library only when used.
 """
 import json

@@ -33,6 +33,9 @@ def test_refdb_build(tmp_path):
     cur = set(read_table(refdb, "currency")["name"])
     assert {"ATP", "H(+)", "H2O", "NAD(+)"} <= cur and "D-glucose" not in cur
     assert read_manifest(refdb)["metanetx_version"] == "4.4"
+    from impmetabolic.refdb.build import metanetx_version
+    assert metanetx_version(["MetaNetX/MNXref reconciliation", "MNXref Version 2025/03/03"]) == "2025/03/03"
+    assert metanetx_version(["Licence: CC BY 4.0", "release: 4.5"]) == "4.5"
     sc = read_table(os.path.join(refdb, "raw"), "seed_compounds")          # parts concatenated
     assert list(sc["id"]) == ["cpd00001", "cpd00002"] and len(read_table(os.path.join(refdb, "raw"), "seed_reactions")) == 1
     from impmetabolic.refdb.download import plan

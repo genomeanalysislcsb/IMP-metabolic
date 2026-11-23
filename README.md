@@ -11,7 +11,7 @@ with **topological analyses** first (size, connectivity, hub metabolites, scope 
 reaction sets) and **flux-based analyses** (gap-filling, FBA) as the next step. Results are tables that
 [IMP-explorer](https://github.com/LCSB-BioCore/imp-explorer) shows next to the other layers of a study.
 
-IMP-metabolic is built on the *metabolic-network* prototype by Artem Kokorin and Marie <!-- TODO: surname --> (LCSB,
+IMP-metabolic is built on the *metabolic-network* prototype by Artem Kokorin and Marie Mahieux (LCSB,
 2025–2026): its reference-data catalogue, the EC cascade from Mantis annotations to MetaNetX reactions and the
 bipartite `MetabolicNetwork`.
 

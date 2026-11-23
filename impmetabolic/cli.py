@@ -87,7 +87,8 @@ def main(argv=None):
     if a.cmd == "refdb" and a.action == "build":
         from .refdb.build import build
         mf = build(a.data, a.out, [x for x in a.sources.split(",") if x] or None, a.format, not a.no_raw)
-        logging.info("refdb %s: %d tables, MetaNetX %s", a.out, len(mf["tables"]), mf.get("metanetx_version") or "?")
+        ver = mf.get("metanetx_version") or "version not found; header: " + " | ".join(mf.get("metanetx_header", [])[:3])
+        logging.info("refdb %s: %d tables, MetaNetX %s", a.out, len(mf["tables"]), ver)
         return 0
     if a.cmd == "map":
         from .mapping import map_samples
