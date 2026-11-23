@@ -107,6 +107,8 @@ def test_map_and_networks(tmp_path):
     s1 = set(sc.loc[(sc["set"] == "all") & (sc["level"] == "community") & (sc["id"] == "S1"), "metabolite"])
     assert {"MNXM100", "MNXM101", "MNXM102", "MNXM103", "MNXM104"} <= s1   # glucose -> triose phosphates
     assert "MNXM106" not in s1                              # no ethanol in the seeds
+    hb = read_table(nets, "hubs")
+    assert "name" in hb.columns and set(hb.loc[hb["metabolite"] == "MNXM100@MNXD1", "name"]) <= {"D-glucose 6-phosphate"}
     cov = read_table(nets, "mag_coverage")
     assert float(cov.loc[(cov["sample_id"] == "S1") & (cov["set"] == "all"), "share_in_mags"].iloc[0]) == 1.0
     assert os.path.exists(os.path.join(nets, "graphml", "all", "community", "S1.graphml"))

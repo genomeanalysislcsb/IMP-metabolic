@@ -119,8 +119,12 @@ def run(mapping, refdb, out, rank=("species", "genus", "family"), tiers=("high",
             if i % step == 0 or i == len(jobs):
                 log.info("%d/%d networks (%s, %s %s: %d reactions)", i, len(jobs), s["set"], s["level"], s["id"],
                          s["reactions"])
-    tabs = {"topology": pd.DataFrame(topo), "hubs": pd.concat(hub_rows, ignore_index=True) if hub_rows else
-            pd.DataFrame(), "pan_reactome": pd.concat(pans, ignore_index=True),
+    hubs = pd.concat(hub_rows, ignore_index=True) if hub_rows else pd.DataFrame()
+    if len(hubs) and len(mets):                                   # metabolite names next to the MNXM@compartment ids
+        names = mets.drop_duplicates("mnx_id").set_index("mnx_id")["name"]
+        hubs.insert(hubs.columns.get_loc("metabolite") + 1, "name",
+                    hubs["metabolite"].str.split("@").str[0].map(names).fillna(""))
+    tabs = {"topology": pd.DataFrame(topo), "hubs": hubs, "pan_reactome": pd.concat(pans, ignore_index=True),
             "pan_summary": pd.concat(pan_sums, ignore_index=True), "mag_coverage": pd.concat(cov, ignore_index=True),
             "scope": pd.concat(scopes, ignore_index=True) if scopes else pd.DataFrame()}
     first = ["set", "level", "id", "sample_id"]
