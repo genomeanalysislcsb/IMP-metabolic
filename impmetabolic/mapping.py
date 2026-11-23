@@ -97,6 +97,9 @@ def map_sample(base, sample, ref, methods=("ec", "rn"), partial_ec=False):
     st = {"sample_id": sample, "genes": len(g), "genes_with_reaction": int(gr["gene"].nunique()),
           "genes_binned_with_reaction": int(gr.loc[gr["bin_id"] != "", "gene"].nunique()),
           "reactions": int(gr["mnx_id"].nunique()), "bins": int(binr["bin_id"].nunique())}
+    rn_sup = gr["evidence"].str.contains("rn:", regex=False)
+    st["reactions_with_rn"] = int(gr.loc[rn_sup, "mnx_id"].nunique())
+    st["reactions_ec_only"] = int(len(set(gr["mnx_id"]) - set(gr.loc[rn_sup, "mnx_id"])))
     for e in ("ec:EC", "ec:KO", "ec:RN", "rn:RN", "rn:KO"):
         st["genes_" + e.replace(":", "_")] = int(gr.loc[gr["evidence"].str.contains(e, regex=False), "gene"].nunique())
     return {"gene_reactions": gr, "community_reactions": com, "bin_reactions": binr,
@@ -128,8 +131,10 @@ def map_samples(samples, refdb, out, methods=("ec", "rn"), partial_ec=False, thr
             for k in parts:
                 parts[k].append(res[k])
             s = res["stats"].iloc[0]
-            log.info("%d/%d %s: %d of %d genes -> %d reactions (%d binned genes, %d bins)", i, len(jobs), sid,
-                     s["genes_with_reaction"], s["genes"], s["reactions"], s["genes_binned_with_reaction"], s["bins"])
+            log.info("%d/%d %s: %d of %d genes -> %d reactions (%d with KEGG-reaction evidence, %d only via EC); "
+                     "%d binned genes, %d bins", i, len(jobs), sid, s["genes_with_reaction"], s["genes"],
+                     s["reactions"], s["reactions_with_rn"], s["reactions_ec_only"], s["genes_binned_with_reaction"],
+                     s["bins"])
     rows = {}
     for k, v in parts.items():
         df = pd.concat(v, ignore_index=True) if v else pd.DataFrame()

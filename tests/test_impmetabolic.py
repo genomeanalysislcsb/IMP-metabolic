@@ -69,13 +69,14 @@ def test_map_and_networks(tmp_path):
     assert set(br.loc[br["bin_id"] == "S1:bin.2", "mnx_id"]) == {"MNXR4", "MNXR5"}
     st = read_table(mp_, "stats")
     assert int(st.loc[st["sample_id"] == "S1", "genes_with_reaction"].iloc[0]) == 5
+    assert int(st.loc[st["sample_id"] == "S1", "reactions_ec_only"].iloc[0]) == 0
     # partial ECs on request: G6 then maps nowhere still (no 1.1.1.- reaction), but nothing breaks
     assert cli(["map", "--refdb", refdb, "--imp-root", root, "--out", str(tmp_path / "map2"), "--threads", "1",
                 "--format", "tsv", "--methods", "ec", "--partial-ec"]) == 0
 
     nets = str(tmp_path / "nets")
     assert cli(["networks", "--mapping", mp_, "--refdb", refdb, "--out", nets, "--format", "tsv",
-                "--graphml"]) == 0
+                "--graphml", "--threads", "2"]) == 0
     t = read_table(nets, "topology")
     lv = dict(zip(t["level"] + ">" + t["id"], t["reactions"]))
     assert lv["community>S1"] == "5" and lv["bin>S1:bin.1"] == "3"

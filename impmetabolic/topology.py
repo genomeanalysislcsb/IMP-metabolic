@@ -6,7 +6,7 @@ import networkx as nx
 import pandas as pd
 
 
-def summary(net, currency=()):
+def summary(net, currency=(), path_sources=200, clustering=True):
     """global properties of a MetabolicNetwork and of its metabolite graph (without currency metabolites)"""
     G = net.metabolite_graph(currency)
     comps = sorted(nx.connected_components(G), key=len, reverse=True) if G.number_of_nodes() else []
@@ -15,8 +15,8 @@ def summary(net, currency=()):
            "graph_nodes": G.number_of_nodes(), "graph_edges": G.number_of_edges(),
            "components": len(comps), "giant_share": len(comps[0]) / G.number_of_nodes() if comps else 0.0,
            "mean_degree": 2 * G.number_of_edges() / G.number_of_nodes() if G.number_of_nodes() else 0.0,
-           "clustering": nx.average_clustering(G) if G.number_of_nodes() else 0.0,
-           "mean_path_length": mean_path_length(giant)}
+           "clustering": nx.average_clustering(G) if clustering and G.number_of_nodes() else float("nan"),
+           "mean_path_length": mean_path_length(giant, path_sources) if path_sources else float("nan")}
     return out
 
 
@@ -48,28 +48,44 @@ def hubs(net, currency=(), top=20, k=200, seed=1):
 
 def scope(net, seeds, reversible=True, merge_compartments=True):
     """network expansion: a reaction fires when all its substrates are in the scope (with reversible=True also
-    from right to left); its products join the scope. -> (scope metabolites, fired reactions)"""
+    from right to left); its products join the scope. -> (scope metabolites, fired reactions).
+    Linear in the size of the network: each (reaction, direction) counts its substrates not yet reached."""
+    from collections import defaultdict, deque
+
     def key(m):
         return net.nodes[m]["metabolite"] if merge_compartments else m
-    rx = []
+    sides, missing, waiting = [], [], defaultdict(list)
     for r in net.reactions():
         s = {key(m) for m in net.predecessors(r)}
         p = {key(m) for m in net.successors(r)}
-        rx.append((r, s, p))
-        if reversible:
-            rx.append((r, p, s))
-    have = set(seeds)
-    fired = set()
-    changed = True
-    while changed:
-        changed = False
-        for r, s, p in rx:
-            if s <= have and not p <= have:
-                have |= p
-                fired.add(r)
-                changed = True
-            elif s <= have:
-                fired.add(r)
+        for a, b in ((s, p), (p, s)) if reversible else ((s, p),):
+            i = len(sides)
+            sides.append((r, b))
+            missing.append(len(a))
+            for m in a:
+                waiting[m].append(i)
+    have, fired = set(), set()
+    queue = deque()
+
+    def reach(m):
+        if m not in have:
+            have.add(m)
+            queue.append(m)
+    for m in seeds:
+        reach(m)
+    for i, n in enumerate(missing):                 # reactions without substrates
+        if n == 0:
+            fired.add(sides[i][0])
+            for m in sides[i][1]:
+                reach(m)
+    while queue:
+        m = queue.popleft()
+        for i in waiting.get(m, ()):
+            missing[i] -= 1
+            if missing[i] == 0:
+                fired.add(sides[i][0])
+                for p in sides[i][1]:
+                    reach(p)
     return have, fired
 
 

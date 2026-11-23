@@ -1,7 +1,10 @@
 """Networks of a mapped cohort (imp-metabolic map): community network per sample, network per MAG, pan-reactome
 network per taxon; topology of each (global properties, hubs, scope from seed metabolites)."""
+import concurrent.futures as cf
 import logging
+import multiprocessing as mp
 import os
+import re
 
 import pandas as pd
 
@@ -28,8 +31,41 @@ def resolve_seeds(path, metabolites, currency):
     return ids | set(currency)
 
 
+_W = {}
+
+
+def _init(reactions, currency, seed_ids, out, graphml):
+    _W.update(eq=reactions, currency=currency, seeds=seed_ids, out=out, graphml=graphml)
+
+
+def analyse(job):
+    """one network: (level, id, sample, reaction ids, hubs?) -> (topology row, hubs table, scope table)"""
+    level, nid, sample, rxns, hubs_too = job
+    net = network.build(rxns, _W["eq"])
+    light = level == "bin"                             # many MAG networks: fewer path-length roots
+    s = topology.summary(net, _W["currency"], path_sources=50 if light else 200)
+    s.update(level=level, id=nid, sample_id=sample)
+    sc_tab = None
+    if _W["seeds"]:
+        sc, fired = topology.scope(net, _W["seeds"])
+        s["scope_metabolites"] = len(sc - _W["seeds"])
+        s["scope_reactions"] = len(fired)
+        s["scope_reaction_share"] = len(fired) / max(1, len(net.reactions()))
+        sc_tab = pd.DataFrame({"level": level, "id": nid, "metabolite": sorted(sc - _W["seeds"])})
+    h = None
+    if hubs_too:
+        h = topology.hubs(net, _W["currency"])
+        h.insert(0, "id", nid)
+        h.insert(0, "level", level)
+    if _W["graphml"]:
+        d = os.path.join(_W["out"], "graphml", level)
+        os.makedirs(d, exist_ok=True)
+        net.to_graphml(os.path.join(d, "%s.graphml" % re.sub(r"[^\w.-]+", "_", str(nid))))
+    return s, h, sc_tab
+
+
 def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEEDS, graphml=False, fmt="auto",
-        bin_hubs=False):
+        bin_hubs=False, threads=4):
     reactions = read_table(refdb, "reactions", columns=["mnx_id", "equation"])
     currency = set(read_table(refdb, "currency", required=False).get("mnx_id", pd.Series(dtype=str)))
     mets = read_table(refdb, "metabolites", columns=["mnx_id", "name"], required=False)
@@ -39,41 +75,29 @@ def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEE
     bins = read_table(mapping, "bins")
     for c in ("completeness", "contamination"):
         bins[c] = pd.to_numeric(bins[c], errors="coerce")
-    topo, hub_rows, scopes = [], [], []
-
-    def analyse(level, nid, sample, rxns, hubs_too):
-        net = network.build(rxns, reactions)
-        s = topology.summary(net, currency)
-        s.update(level=level, id=nid, sample_id=sample)
-        if seed_ids:
-            sc, fired = topology.scope(net, seed_ids)
-            s["scope_metabolites"] = len(sc - seed_ids)
-            s["scope_reactions"] = len(fired)
-            s["scope_reaction_share"] = len(fired) / max(1, len(net.reactions()))
-            scopes.append(pd.DataFrame({"level": level, "id": nid, "metabolite": sorted(sc - seed_ids)}))
-        topo.append(s)
-        if hubs_too:
-            h = topology.hubs(net, currency)
-            h.insert(0, "id", nid)
-            h.insert(0, "level", level)
-            hub_rows.append(h)
-        if graphml:
-            os.makedirs(os.path.join(out, "graphml", level), exist_ok=True)
-            net.to_graphml(os.path.join(out, "graphml", level, "%s.graphml" % str(nid).replace(":", "_")
-                                        .replace("/", "_").replace(" ", "_")))
-
-    for sid, g in com.groupby("sample_id"):
-        analyse("community", sid, sid, g["mnx_id"], True)
-        log.info("community %s: %d reactions", sid, len(g))
     q = bins[bins["quality"].isin(tiers)]
     brq = br[br["bin_id"].isin(q["bin_id"])]
-    for bid, g in brq.groupby("bin_id"):
-        analyse("bin", bid, bid.split(":")[0], g["mnx_id"], bin_hubs)
-    log.info("%d MAG networks (%s)", brq["bin_id"].nunique(), ", ".join(tiers))
     pan, pan_sum = pangenome.pan_reactome(br, bins, rank, tiers)
-    for tax, g in pan.groupby("taxon"):
-        analyse("pan_" + rank, tax, "", g["mnx_id"], True)
-    log.info("%d pan-reactomes (%s with >= 2 MAGs)", pan["taxon"].nunique(), rank)
+    used = set(com["mnx_id"]) | set(br["mnx_id"])
+    reactions = reactions[reactions["mnx_id"].isin(used)]          # workers get only the reactions needed
+    jobs = [("community", sid, sid, list(g["mnx_id"]), True) for sid, g in com.groupby("sample_id")]
+    jobs += [("bin", bid, bid.split(":")[0], list(g["mnx_id"]), bin_hubs) for bid, g in brq.groupby("bin_id")]
+    jobs += [("pan_" + rank, tax, "", list(g["mnx_id"]), True) for tax, g in pan.groupby("taxon")]
+    log.info("%d networks: %d communities, %d MAGs (%s), %d pan-reactomes (%s with >= 2 MAGs); %d threads",
+             len(jobs), com["sample_id"].nunique(), brq["bin_id"].nunique(), ", ".join(tiers),
+             pan["taxon"].nunique(), rank, threads)
+    topo, hub_rows, scopes = [], [], []
+    with cf.ProcessPoolExecutor(max_workers=max(1, threads), mp_context=mp.get_context("spawn"),
+                                initializer=_init, initargs=(reactions, currency, seed_ids, out, graphml)) as ex:
+        step = max(1, len(jobs) // 20)
+        for i, (s, h, sc) in enumerate(ex.map(analyse, jobs, chunksize=4), 1):
+            topo.append(s)
+            if h is not None:
+                hub_rows.append(h)
+            if sc is not None:
+                scopes.append(sc)
+            if i % step == 0 or i == len(jobs):
+                log.info("%d/%d networks (%s %s: %d reactions)", i, len(jobs), s["level"], s["id"], s["reactions"])
     # share of the community's reactions found in its MAGs
     cov = com.groupby("sample_id")["mnx_id"].nunique().rename("community_reactions").to_frame()
     cov["in_mags"] = brq.groupby("sample_id")["mnx_id"].nunique()

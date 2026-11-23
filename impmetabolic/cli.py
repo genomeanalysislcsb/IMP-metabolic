@@ -72,6 +72,7 @@ def main(argv=None):
                    "MNXM ids; 'default' = minimal glucose medium; 'none' = no scope)")
     n.add_argument("--graphml", action="store_true", help="also write every network as GraphML (Cytoscape)")
     n.add_argument("--bin-hubs", action="store_true", help="hub metabolites also for every MAG network")
+    n.add_argument("--threads", type=int, default=4)
     n.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
@@ -101,7 +102,8 @@ def main(argv=None):
     if a.cmd == "networks":
         from .networks import SEEDS, run
         seeds = SEEDS if a.seeds == "default" else (None if a.seeds == "none" else a.seeds)
-        run(a.mapping, a.refdb, a.out, a.rank, tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs)
+        run(a.mapping, a.refdb, a.out, a.rank, tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
+            a.threads)
         return 0
     return 1
 
