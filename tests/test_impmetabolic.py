@@ -1,0 +1,96 @@
+import os
+import sys
+
+import pandas as pd
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))
+sys.path.insert(0, HERE)
+
+import fixture  # noqa: E402
+from impmetabolic import network, topology  # noqa: E402
+from impmetabolic.cli import main as cli  # noqa: E402
+from impmetabolic.store import read_manifest, read_table  # noqa: E402
+
+
+def setup(tmp):
+    data, refdb, root = str(tmp / "data"), str(tmp / "refdb"), str(tmp / "imp")
+    fixture.reference(data)
+    fixture.sample(root, "S1")
+    fixture.sample(root, "S2")
+    assert cli(["refdb", "build", "--data", data, "--out", refdb, "--format", "tsv"]) == 0
+    return data, refdb, root
+
+
+def test_refdb_build(tmp_path):
+    _, refdb, _ = setup(tmp_path)
+    r = read_table(refdb, "reactions")
+    assert len(r) == 6 and set(r.columns) >= {"mnx_id", "equation", "ec_list", "is_transport"}
+    assert set(read_table(refdb, "reaction_ec")["ec"]) == {"2.7.1.1", "5.3.1.9", "2.7.1.11", "4.1.2.13", "1.1.1.1"}
+    assert set(read_table(refdb, "kegg_to_mnx_reaction")["source_id"]) == {"R00299", "R02740", "R04779", "R01068",
+                                                                           "R00754"}
+    assert {"ko_ec", "rn_ec", "ko_rn"} <= set(read_manifest(refdb)["tables"])
+    cur = set(read_table(refdb, "currency")["name"])
+    assert {"ATP", "H(+)", "H2O", "NAD(+)"} <= cur and "D-glucose" not in cur
+    assert read_manifest(refdb)["metanetx_version"] == "4.4"
+
+
+def test_equation_parser():
+    re_, pr = network.parse_equation("1 MNXM1@MNXD1 + 2 MNXM2@MNXD1 = n MNXM3@MNXD2")
+    assert re_ == [(1.0, "MNXM1", "MNXD1"), (2.0, "MNXM2", "MNXD1")] and pr == [("n", "MNXM3", "MNXD2")]
+
+
+def test_map_and_networks(tmp_path):
+    _, refdb, root = setup(tmp_path)
+    mp_ = str(tmp_path / "map")
+    assert cli(["map", "--refdb", refdb, "--imp-root", root, "--out", mp_, "--threads", "1", "--format", "tsv"]) == 0
+    gr = read_table(os.path.join(mp_, "samples", "S1"), "gene_reactions")
+    ev = dict(zip(gr["gene"] + ">" + gr["mnx_id"], gr["evidence"]))
+    assert ev["S1_G1>MNXR1"] == "ec:EC,rn:KO"            # direct EC, and its KO's KEGG reaction
+    assert ev["S1_G2>MNXR2"] == "ec:KO,rn:KO"
+    assert ev["S1_G4>MNXR4"] == "ec:RN,rn:RN"            # only the KEGG reaction
+    assert ev["S1_G5>MNXR5"] == "ec:KO,rn:KO"
+    assert not gr["gene"].isin(["S1_G6", "S1_G7"]).any()   # partial EC, no annotation
+    assert set(gr.loc[gr["gene"] == "S1_G1", "bin_id"]) == {"S1:bin.1"}
+    com = read_table(mp_, "community_reactions")
+    assert set(com.loc[com["sample_id"] == "S1", "mnx_id"]) == {"MNXR1", "MNXR2", "MNXR3", "MNXR4", "MNXR5"}
+    r1 = com[(com["sample_id"] == "S1") & (com["mnx_id"] == "MNXR1")].iloc[0]
+    assert float(r1["mg_reads"]) == 10 and float(r1["mt_reads"]) == 30
+    br = read_table(mp_, "bin_reactions")
+    assert set(br.loc[br["bin_id"] == "S1:bin.1", "mnx_id"]) == {"MNXR1", "MNXR2", "MNXR3"}
+    assert set(br.loc[br["bin_id"] == "S1:bin.2", "mnx_id"]) == {"MNXR4", "MNXR5"}
+    st = read_table(mp_, "stats")
+    assert int(st.loc[st["sample_id"] == "S1", "genes_with_reaction"].iloc[0]) == 5
+    # partial ECs on request: G6 then maps nowhere still (no 1.1.1.- reaction), but nothing breaks
+    assert cli(["map", "--refdb", refdb, "--imp-root", root, "--out", str(tmp_path / "map2"), "--threads", "1",
+                "--format", "tsv", "--methods", "ec", "--partial-ec"]) == 0
+
+    nets = str(tmp_path / "nets")
+    assert cli(["networks", "--mapping", mp_, "--refdb", refdb, "--out", nets, "--format", "tsv",
+                "--graphml"]) == 0
+    t = read_table(nets, "topology")
+    lv = dict(zip(t["level"] + ">" + t["id"], t["reactions"]))
+    assert lv["community>S1"] == "5" and lv["bin>S1:bin.1"] == "3"
+    assert "bin>S1:bin.2" in lv                            # medium-quality MAG
+    assert lv["pan_species>Bacteroides uniformis"] == "3"   # 2 MAGs (S1, S2); bin.2 has no species name
+    pan = read_table(nets, "pan_reactome")
+    assert (pan["class"] == "core").all() and set(pan["n_mags"]) == {"2"}
+    sc = read_table(nets, "scope")
+    s1 = set(sc.loc[(sc["level"] == "community") & (sc["id"] == "S1"), "metabolite"])
+    assert {"MNXM100", "MNXM101", "MNXM102", "MNXM103", "MNXM104"} <= s1   # glucose -> triose phosphates
+    assert "MNXM106" not in s1                              # no ethanol in the seeds
+    cov = read_table(nets, "mag_coverage")
+    assert float(cov.loc[cov["sample_id"] == "S1", "share_in_mags"].iloc[0]) == 1.0
+    assert os.path.exists(os.path.join(nets, "graphml", "community", "S1.graphml"))
+
+
+def test_topology_and_currency():
+    rx = pd.DataFrame({"mnx_id": [r[0] for r in fixture.RXNS], "equation": [r[1] for r in fixture.RXNS]})
+    net = network.build(rx["mnx_id"], rx)
+    G = net.metabolite_graph(currency={"MNXM3", "MNXM7", "MNXM1", "MNXM8", "MNXM10"})
+    assert "MNXM3@MNXD1" not in G and G.has_edge("MNXM99@MNXD1", "MNXM100@MNXD1")
+    s = topology.summary(net, {"MNXM3", "MNXM7", "MNXM1", "MNXM8", "MNXM10"})
+    assert s["reactions"] == 5 and s["components"] == 2      # glycolysis fragment, alcohol dehydrogenase
+    have, fired = topology.scope(net, {"MNXM99", "MNXM3"})
+    assert fired == {"MNXR1", "MNXR2", "MNXR3", "MNXR4"}
+    assert topology.jaccard({"a", "b"}, {"b", "c"}) == 1 / 3

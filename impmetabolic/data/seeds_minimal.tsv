@@ -1,0 +1,12 @@
+# seed metabolites for scope expansion (MetaNetX names or MNXM ids), one per line: a minimal glucose medium with
+# inorganic nutrients; currency metabolites (refdb table currency) are added automatically
+D-glucose
+sulfate
+hydrogen sulfide
+phosphate
+NH4(+)
+H2O
+H(+)
+CO2
+O2
+Fe(2+)
