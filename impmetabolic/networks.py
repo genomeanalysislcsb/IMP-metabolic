@@ -65,7 +65,7 @@ def analyse(job):
     return s, h, sc_tab
 
 
-def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEEDS, graphml=False, fmt="auto",
+def run(mapping, refdb, out, rank=("species", "genus", "family"), tiers=("high", "medium"), seeds=SEEDS, graphml=False, fmt="auto",
         bin_hubs=False, threads=4, sets=("specific", "all")):
     reactions = read_table(refdb, "reactions", columns=["mnx_id", "equation"])
     currency = set(read_table(refdb, "currency", required=False).get("mnx_id", pd.Series(dtype=str)))
@@ -82,25 +82,29 @@ def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEE
         sets = ("all",)
     used = set(com["mnx_id"]) | set(br["mnx_id"])
     reactions = reactions[reactions["mnx_id"].isin(used)]          # workers get only the reactions needed
+    ranks = (rank,) if isinstance(rank, str) else tuple(rank)
     jobs, pans, pan_sums, cov = [], [], [], []
     for rset in sets:
         c = com if rset == "all" else com[com["confidence"] == "specific"]
         b = br if rset == "all" else br[br["confidence"] == "specific"]
         bq = b[b["bin_id"].isin(q["bin_id"])]
-        pan, pan_sum = pangenome.pan_reactome(b, bins, rank, tiers)
-        pans.append(pan.assign(set=rset))
-        pan_sums.append(pan_sum.assign(set=rset))
         jobs += [("community", sid, sid, list(g["mnx_id"]), True, rset) for sid, g in c.groupby("sample_id")]
         jobs += [("bin", bid, bid.split(":")[0], list(g["mnx_id"]), bin_hubs, rset) for bid, g in bq.groupby("bin_id")]
-        jobs += [("pan_" + rank, tax, "", list(g["mnx_id"]), True, rset) for tax, g in pan.groupby("taxon")]
+        npan = []
+        for rk in ranks:                       # pan-reactomes per species and per higher rank (as AGORA2)
+            pan, pan_sum = pangenome.pan_reactome(b, bins, rk, tiers)
+            pans.append(pan.assign(set=rset))
+            pan_sums.append(pan_sum.assign(set=rset))
+            jobs += [("pan_" + rk, tax, "", list(g["mnx_id"]), True, rset) for tax, g in pan.groupby("taxon")]
+            npan.append("%d %s" % (pan["taxon"].nunique(), rk))
         # share of the community's reactions found in its MAGs
         cv = c.groupby("sample_id")["mnx_id"].nunique().rename("community_reactions").to_frame()
         cv["in_mags"] = bq.groupby("sample_id")["mnx_id"].nunique()
         cv["in_mags"] = cv["in_mags"].fillna(0).astype(int)
         cv["share_in_mags"] = cv["in_mags"] / cv["community_reactions"]
         cov.append(cv.reset_index().assign(set=rset))
-        log.info("%s reactions: %d communities, %d MAGs (%s), %d pan-reactomes (%s with >= 2 MAGs)", rset,
-                 c["sample_id"].nunique(), bq["bin_id"].nunique(), ", ".join(tiers), pan["taxon"].nunique(), rank)
+        log.info("%s reactions: %d communities, %d MAGs (%s), pan-reactomes of taxa with >= 2 MAGs: %s", rset,
+                 c["sample_id"].nunique(), bq["bin_id"].nunique(), ", ".join(tiers), ", ".join(npan))
     log.info("%d networks, %d threads", len(jobs), threads)
     topo, hub_rows, scopes = [], [], []
     with cf.ProcessPoolExecutor(max_workers=max(1, threads), mp_context=mp.get_context("spawn"),
@@ -126,7 +130,7 @@ def run(mapping, refdb, out, rank="species", tiers=("high", "medium"), seeds=SEE
         write_table(v, out, k, fmt)
         rows[k] = int(len(v))
     write_manifest(out, "networks", rows, {"mapping": os.path.abspath(mapping), "refdb": os.path.abspath(refdb),
-                                           "rank": rank, "tiers": list(tiers), "seeds": seeds or "",
+                                           "ranks": list(ranks), "tiers": list(tiers), "seeds": seeds or "",
                                            "sets": list(sets),
                                            "currency": sorted(currency)})
     return tabs

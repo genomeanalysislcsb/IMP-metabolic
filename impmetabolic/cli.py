@@ -68,7 +68,8 @@ def main(argv=None):
     n.add_argument("--mapping", required=True, help="output of imp-metabolic map")
     n.add_argument("--refdb", required=True)
     n.add_argument("--out", required=True)
-    n.add_argument("--rank", default="species", help="GTDB rank of the pan-reactomes [species]")
+    n.add_argument("--ranks", default="species,genus,family", help="GTDB ranks of the pan-reactomes (taxa with >= 2 "
+                   "MAGs) [species,genus,family]")
     n.add_argument("--quality", default="high,medium", help="MAG tiers used [high,medium]")
     n.add_argument("--seeds", default="default", help="seed metabolites for the scope (file of MetaNetX names / "
                    "MNXM ids; 'default' = minimal glucose medium; 'none' = no scope)")
@@ -106,7 +107,7 @@ def main(argv=None):
     if a.cmd == "networks":
         from .networks import SEEDS, run
         seeds = SEEDS if a.seeds == "default" else (None if a.seeds == "none" else a.seeds)
-        run(a.mapping, a.refdb, a.out, a.rank, tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
+        run(a.mapping, a.refdb, a.out, tuple(x for x in a.ranks.split(",") if x), tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
             a.threads, tuple(x for x in a.sets.split(",") if x))
         return 0
     return 1

@@ -18,7 +18,8 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
   through ECs with many substrate variants); MetaNetX reactions that are the same conversion (other compartment,
   protons, coefficients) form one reaction group in the community and MAG tables.
 - **Networks** (`imp-metabolic networks`): bipartite metabolite-reaction networks (the prototype's
-  `MetabolicNetwork`) of each community, each MAG and each GTDB species' pan-reactome (core / accessory / rare
+  `MetabolicNetwork`) of each community, each MAG and the pan-reactome of each GTDB species, genus and family
+  (`--ranks`) (core / accessory / rare
   reactions); topology without currency metabolites (size, components, degree, clustering, path length, hub
   metabolites by betweenness), scope expansion from seed metabolites, share of the community's reactions in its
   MAGs; GraphML export. Analysed for the specific and for all reactions (`--sets`), in parallel (`--threads`).

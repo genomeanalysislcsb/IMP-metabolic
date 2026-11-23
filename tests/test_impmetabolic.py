@@ -98,6 +98,8 @@ def test_map_and_networks(tmp_path):
     assert lv["community>S1"] == "6" and lv["bin>S1:bin.1"] == "3"
     assert "bin>S1:bin.2" in lv                            # medium-quality MAG
     assert lv["pan_species>Bacteroides uniformis"] == "3"   # 2 MAGs (S1, S2); bin.2 has no species name
+    assert lv["pan_genus>Blautia_A"] == "3"                  # ... but a genus: R4, R5, R7
+    assert lv["pan_family>Bacteroidaceae"] == "3"
     pan = read_table(nets, "pan_reactome")
     pan = pan[pan["set"] == "all"]
     assert (pan["class"] == "core").all() and set(pan["n_mags"]) == {"2"}

@@ -5,7 +5,8 @@ Metabolic networks of microbial communities and their MAGs, reconstructed from t
 
 - a **community network** per sample (all genes of the sample's assembly),
 - a **network per MAG** (the genes on the MAG's contigs),
-- a **pan-reactome network per taxon** (all MAGs of one GTDB species across the cohort: core and accessory reactions),
+- a **pan-reactome network per taxon** (all MAGs of one GTDB species, genus or family across the cohort, as AGORA2
+  does for higher ranks: core and accessory reactions),
 
 with **topological analyses** first (size, connectivity, hub metabolites, scope from seed metabolites, comparison of
 reaction sets) and **flux-based analyses** (gap-filling, FBA) as the next step. Results are tables that
