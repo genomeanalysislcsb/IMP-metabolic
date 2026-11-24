@@ -164,3 +164,21 @@ def test_currency_by_role():
     # frequent pairs from the reference: ATP / ADP twice here
     fp = cx.frequent_pairs(rx, min_reactions=2)
     assert list(fp.index) == [("MNXM3", "MNXM7")]
+
+
+def test_annotate_modules(tmp_path):
+    from impmetabolic.annotate import annotate_modules, reaction_pathways
+    _, refdb, root = setup(tmp_path)
+    rp = reaction_pathways(refdb)
+    assert set(rp.loc[rp["mnx_id"] == "MNXR1", "pathway"]) == {"map00010"}
+    assert set(rp.loc[rp["mnx_id"] == "MNXR5", "pathway"]) == {"map00071"}          # via EC; map01100 left out
+    mp_ = str(tmp_path / "map")
+    cli(["map", "--refdb", refdb, "--imp-root", root, "--out", mp_, "--threads", "1", "--format", "tsv"])
+    sets = {("c", "M1"): {"MNXR1", "MNXR2", "MNXR3", "MNXR4"}, ("c", "M2"): {"MNXR5", "MNXR7"}}
+    active = {"c": {"MNXR1", "MNXR2", "MNXR3", "MNXR4", "MNXR5", "MNXR7"}}
+    paths, ann = annotate_modules(sets, active, refdb, read_table(mp_, "bin_reactions"), read_table(mp_, "bins"),
+                                  {"c": {"S1", "S2"}})
+    a = ann.set_index("module")
+    assert a.loc["M1", "distinct_ecs"] == 4 and "Bacteroides" in a.loc["M1", "genera"]
+    assert "Blautia_A:100%" in a.loc["M2", "genera"]
+    assert set(paths.loc[paths["module"] == "M1", "pathway"]) == {"map00010"}

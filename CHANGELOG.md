@@ -26,6 +26,11 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- coexpression `--by`: `--permutations N` (condition labels shuffled within each block, whole analysis repeated;
+  tables `class_null`, `class_tests` with empirical p-values of the observed numbers of conserved / partial / weak /
+  specific modules), class *weak* (significant overlap with Jaccard < 0.1), `--refdb` annotates the modules
+  (`module_pathways`: KEGG pathway enrichment via KEGG reactions and ECs; `module_annotation`: pathways, ECs and the
+  genera carrying the reactions in the condition's samples).
 - coexpression `--by <condition> [--block site]`: active reaction groups, network and modules per condition;
   module overlap between the conditions of a site (Jaccard, hypergeometric test, BH) and per module its best
   partner and class (conserved / partial / specific), with the share of its reactions active only in its condition.

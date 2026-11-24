@@ -139,7 +139,10 @@ def test_condition_specific_modules(tmp_path):
     d = tmp_path / "map"
     write_table(pd.DataFrame(rows), str(d), "community_reactions", "tsv")
     meta = pd.DataFrame({"sample_id": samples, "group": group})
-    tabs = cx.run_by(str(d), str(tmp_path / "by"), "group", metadata=meta, min_module_size=10, fmt="tsv")
+    tabs = cx.run_by(str(d), str(tmp_path / "by"), "group", metadata=meta, min_module_size=10, fmt="tsv",
+                     permutations=2, threads=1)
+    ct = tabs["class_tests"].set_index("class")
+    assert {"observed", "null_mean", "p_greater"} <= set(ct.columns) and ct.loc["specific", "observed"] >= 1
     act = tabs["condition_active"]
     assert act[(act["condition"] == "control") & act["mnx_id"].isin(["MNXR160"])]["active"].sum() == 0
     mods = tabs["modules"]

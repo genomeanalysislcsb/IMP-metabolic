@@ -123,6 +123,10 @@ def main(argv=None):
                    "network per condition (within --block levels), module overlap between conditions")
     c.add_argument("--active-tpm", type=float, default=1.0, help="with --by: metaT TPM for a reaction group to be "
                    "active in a sample [1]")
+    c.add_argument("--permutations", type=int, default=0, help="with --by: shuffle the conditions within each block "
+                   "this many times -> null distribution of the module classes [0]")
+    c.add_argument("--threads", type=int, default=1, help="with --permutations: worker processes [1]")
+    c.add_argument("--refdb", help="with --by: annotate the modules (KEGG pathway enrichment, ECs, genera)")
     c.add_argument("--min-jaccard", type=float, default=0.2, help="with --by: Jaccard of mutual best partners to call "
                    "a module conserved [0.2]")
     c.add_argument("--traits", default="", help="metadata columns to associate with the modules (comma-separated)")
@@ -176,7 +180,8 @@ def main(argv=None):
             from .coexpression import run_by
             run_by(a.mapping, a.out, a.by, a.block, meta, a.value, a.reactions, a.min_prevalence, a.active_tpm,
                    a.pseudocount, a.transform, a.correlation, a.power, a.r2, a.min_module_size, a.merge_diss,
-                   a.tree_cut, a.deep_split, a.reassign_kme, 0.3, a.min_jaccard, a.format)
+                   a.tree_cut, a.deep_split, a.reassign_kme, 0.3, a.min_jaccard, a.format, a.permutations,
+                   a.threads, a.refdb)
             return 0
         coex(a.mapping, a.out, a.value, a.reactions, a.min_prevalence, a.pseudocount, a.transform, a.correlation,
              a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format,

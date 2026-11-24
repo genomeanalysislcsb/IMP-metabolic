@@ -52,6 +52,12 @@ def reference(data):
     w(os.path.join(k, "link_enzyme", "orthology"), "".join("ko:%s\tec:%s\n" % (ko, ec) for _, _, ec, _, ko in RXNS))
     w(os.path.join(k, "link_enzyme", "reaction"), "".join("rn:%s\tec:%s\n" % (rn, ec) for _, _, ec, rn, _ in RXNS))
     w(os.path.join(k, "link_reaction", "orthology"), "".join("ko:%s\trn:%s\n" % (ko, rn) for _, _, _, rn, ko in RXNS))
+    # pathways: glycolysis (map00010) for R1-R4, through KEGG reactions; ethanol (map00010 + map00071) via EC
+    w(os.path.join(k, "link_reaction", "pathway"), "".join("rn:%s\tpath:map00010\nrn:%s\tpath:rn00010\n" % (rn, rn)
+                                                          for _, _, _, rn, _ in RXNS[:4]))
+    w(os.path.join(k, "link_enzyme", "pathway"), "ec:1.1.1.1\tpath:map00071\nec:1.1.1.1\tpath:map01100\n")
+    w(os.path.join(k, "list", "pathway"), "map00010\tGlycolysis / Gluconeogenesis\nmap00071\tFatty acid degradation\n"
+      "map01100\tMetabolic pathways\n")
 
 
 GENES = [  # gene, contig, attributes
