@@ -442,3 +442,143 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
                                                "reassign_kme": reassign_kme, "min_kme_to_stay": min_kme_to_stay,
                                                "adjust": adjust or ""})
     return tabs
+
+
+# ----------------------------------------------------------------------------- per condition (--by)
+def network_modules(Xt, method="pearson", power=None, r2=0.8, min_module_size=20, merge_diss=0.18,
+                    tree_cut="dynamic", deep_split=2, reassign_kme=0.5, min_kme_to_stay=0.3):
+    """the network steps of run() on one transformed matrix -> labels (0 = unassigned), power, tree cut"""
+    C = correlation(Xt, method, min_periods=max(5, int(0.5 * len(Xt))))
+    if power is None:
+        power, _ = pick_power(scale_free_fit(C), r2)
+    A = ((1 + C) / 2) ** power
+    np.fill_diagonal(A, 0)
+    D = 1 - tom(A)
+    np.fill_diagonal(D, 0)
+    Z = linkage(squareform(D, checks=False), "average")
+    labels, how_cut = cut_tree(Z, D, min_module_size, deep_split, tree_cut)
+    labels = relabel(merge_modules(Xt, labels, merge_diss))
+    if reassign_kme:
+        labels = relabel(reassign(Xt, labels, reassign_kme, min_kme_to_stay))
+    return labels, power, how_cut
+
+
+def fisher_greater(k, a, b, n):
+    """P(overlap >= k) for sets of size a and b in a universe of n (hypergeometric)"""
+    return float(stats.hypergeom.sf(k - 1, n, a, b)) if n and a and b else 1.0
+
+
+def run_by(mapping, out, by, block=None, metadata=None, value="auto", confidence="all", min_prev=0.5,
+           active_tpm=1.0, pseudocount=None, how="yeo-johnson", method="pearson", power=None, r2=0.8,
+           min_module_size=20, merge_diss=0.18, tree_cut="dynamic", deep_split=2, reassign_kme=0.5,
+           min_kme_to_stay=0.3, min_jaccard=0.2, fmt="auto"):
+    """condition-specific co-expression: per condition (level of `by`, within each level of `block`) the active
+    reaction groups (metaT TPM >= active_tpm in >= min_prev of the condition's samples; without metaT: present),
+    a network and modules from the condition's samples only; then, for every two conditions of the same block,
+    the overlap of every module pair (shared reaction groups, Jaccard, hypergeometric test against the reaction
+    groups active in both, BH) and per module its best partner and class:
+      conserved   significant overlap, mutual best partners, Jaccard >= min_jaccard
+      partial     significant overlap but not conserved (split, merged or shifted)
+      specific    no significant partner"""
+    meta = metadata.copy()
+    meta["sample_id"] = meta["sample_id"].astype(str)
+    meta = meta.set_index("sample_id")
+    com = read_table(mapping, "community_reactions")
+    mg, mt = matrices(com, confidence)
+    ids = (mt if mt is not None else mg).index.astype(str)
+    blocks = meta[block].reindex(ids).astype(str) if block else pd.Series("all", index=ids)
+    cond = meta[by].reindex(ids)
+    conds = {}
+    for (b, g), idx in pd.DataFrame({"b": blocks, "g": cond}).dropna().groupby(["b", "g"]).groups.items():
+        if len(idx) >= 10:
+            conds[(b, str(g))] = list(idx)
+    tabs = {k: [] for k in ("condition_active", "modules", "module_summary")}
+    sets, active = {}, {}
+    for (b, g), idx in sorted(conds.items()):
+        name = "%s|%s" % (b, g) if block else g
+        base = mt if mt is not None else mg
+        sub = base.loc[idx].fillna(0)
+        thr = active_tpm if mt is not None else 0
+        share = (sub >= thr).mean() if mt is not None else (sub > 0).mean()
+        act = share[share >= min_prev].index
+        active[name] = set(act)
+        tabs["condition_active"].append(pd.DataFrame({"condition": name, "mnx_id": share.index,
+                                                      "share_active": share.values,
+                                                      "active": share.index.isin(act)}))
+        X, val, pc, _ = values(mg.loc[idx] if mg is not None else None, mt.loc[idx] if mt is not None else None,
+                               value, min_prev=0.0, pseudocount=pseudocount)
+        X = X[[c for c in X.columns if c in active[name]]]
+        X, members = collapse_duplicates(X)
+        Xt = transform(X, how)
+        labels, pw, how_cut = network_modules(Xt, method, power, r2, min_module_size, merge_diss, tree_cut,
+                                              deep_split, reassign_kme, min_kme_to_stay)
+        mods = pd.DataFrame({"condition": name, "mnx_id": Xt.columns, "module": ["M%d" % m for m in labels]})
+        mods["same_profile"] = mods["mnx_id"].map(members).fillna(mods["mnx_id"])
+        tabs["modules"].append(mods)
+        for m, d in mods[mods["module"] != "M0"].groupby("module"):
+            sets[(name, m)] = set(" ".join(d["same_profile"]).split())
+            tabs["module_summary"].append({"condition": name, "module": m, "profiles": len(d),
+                                           "reaction_groups": len(sets[(name, m)]), "samples": len(idx),
+                                           "power": pw})
+        log.info("%s: %d samples, %d active reaction groups, %d profiles, power %d, %d modules (%s)", name, len(idx),
+                 len(act), Xt.shape[1], pw, int(labels.max()), how_cut)
+    # overlap of the modules of two conditions of the same block
+    rows = []
+    names = sorted(active)
+    for i, c1 in enumerate(names):
+        for c2 in names[i + 1:]:
+            if block and c1.split("|")[0] != c2.split("|")[0]:
+                continue
+            U = active[c1] & active[c2]
+            for (n1, m1), s1 in sets.items():
+                if n1 != c1:
+                    continue
+                for (n2, m2), s2 in sets.items():
+                    if n2 != c2:
+                        continue
+                    a, b_ = s1 & U, s2 & U
+                    k = len(a & b_)
+                    rows.append({"condition_a": c1, "module_a": m1, "condition_b": c2, "module_b": m2,
+                                 "size_a": len(s1), "size_b": len(s2), "shared": len(s1 & s2),
+                                 "jaccard": len(s1 & s2) / len(s1 | s2) if s1 | s2 else 0.0,
+                                 "p": fisher_greater(k, len(a), len(b_), len(U))})
+    ov = pd.DataFrame(rows)
+    matches = []
+    if len(ov):
+        ov["q"] = bh(ov["p"].values)
+        sig = ov[ov["q"] < 0.05]
+        for side, other in (("a", "b"), ("b", "a")):
+            for (cn, m), d in ov.groupby(["condition_" + side, "module_" + side]):
+                cn_other = d["condition_" + other].iloc[0]
+                s = sig[(sig["condition_" + side] == cn) & (sig["module_" + side] == m)]
+                own = sets[(cn, m)]
+                only_here = len(own - active[cn_other]) / len(own) if own else np.nan
+                if s.empty:
+                    matches.append({"condition": cn, "module": m, "vs": cn_other, "partner": "", "jaccard": 0.0,
+                                    "q": np.nan, "n_partners": 0, "share_active_only_here": only_here,
+                                    "class": "specific"})
+                    continue
+                best = s.sort_values("jaccard", ascending=False).iloc[0]
+                partner = best["module_" + other]
+                back = sig[(sig["condition_" + other] == cn_other) & (sig["module_" + other] == partner)]
+                mutual = (not back.empty and
+                          back.sort_values("jaccard", ascending=False).iloc[0]["module_" + side] == m)
+                cls = "conserved" if mutual and best["jaccard"] >= min_jaccard else "partial"
+                matches.append({"condition": cn, "module": m, "vs": cn_other, "partner": partner,
+                                "jaccard": float(best["jaccard"]), "q": float(best["q"]), "n_partners": len(s),
+                                "share_active_only_here": only_here, "class": cls})
+    tabs = {"condition_active": pd.concat(tabs["condition_active"], ignore_index=True),
+            "modules": pd.concat(tabs["modules"], ignore_index=True),
+            "module_summary": pd.DataFrame(tabs["module_summary"]), "module_overlap": ov,
+            "module_matches": pd.DataFrame(matches)}
+    if len(tabs["module_matches"]):
+        for (cn, vs), d in tabs["module_matches"].groupby(["condition", "vs"]):
+            log.info("%s vs %s: %s", cn, vs, ", ".join("%d %s" % (n, c) for c, n in d["class"].value_counts().items()))
+    rows_ = {}
+    for k, v in tabs.items():
+        write_table(v, out, k, fmt)
+        rows_[k] = int(len(v))
+    write_manifest(out, "coexpression_by", rows_, {"mapping": os.path.abspath(mapping), "by": by, "block": block or "",
+                                                   "min_prevalence": min_prev, "active_tpm": active_tpm,
+                                                   "min_jaccard": min_jaccard, "transform": how})
+    return tabs

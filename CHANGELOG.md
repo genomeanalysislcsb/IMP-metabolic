@@ -26,6 +26,9 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- coexpression `--by <condition> [--block site]`: active reaction groups, network and modules per condition;
+  module overlap between the conditions of a site (Jaccard, hypergeometric test, BH) and per module its best
+  partner and class (conserved / partial / specific), with the share of its reactions active only in its condition.
 - coexpression: `--adjust site`: each transformed reaction group centred within each site before the network, so
   site differences do not form modules (Expobiome: the site module M8).
 - coexpression: kME-based (re)assignment after the tree cut as WGCNA's blockwiseModules (`--reassign-kme` 0.5,

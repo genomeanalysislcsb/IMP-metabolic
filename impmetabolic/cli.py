@@ -119,6 +119,12 @@ def main(argv=None):
                    "sites are confounded)")
     c.add_argument("--adjust", help="metadata column whose effect is removed before the network (each reaction group "
                    "centred within each level), e.g. site")
+    c.add_argument("--by", help="condition-specific modules: metadata column of the conditions (e.g. group); one "
+                   "network per condition (within --block levels), module overlap between conditions")
+    c.add_argument("--active-tpm", type=float, default=1.0, help="with --by: metaT TPM for a reaction group to be "
+                   "active in a sample [1]")
+    c.add_argument("--min-jaccard", type=float, default=0.2, help="with --by: Jaccard of mutual best partners to call "
+                   "a module conserved [0.2]")
     c.add_argument("--traits", default="", help="metadata columns to associate with the modules (comma-separated)")
     c.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     a = ap.parse_args(argv)
@@ -164,6 +170,14 @@ def main(argv=None):
             meta = pd.read_csv(a.metadata, sep="," if a.metadata.endswith(".csv") else "\t", dtype=str)
             if "sample_id" not in meta.columns:
                 meta = meta.rename(columns={meta.columns[0]: "sample_id"})
+        if a.by:
+            if meta is None:
+                sys.exit("--by needs --metadata")
+            from .coexpression import run_by
+            run_by(a.mapping, a.out, a.by, a.block, meta, a.value, a.reactions, a.min_prevalence, a.active_tpm,
+                   a.pseudocount, a.transform, a.correlation, a.power, a.r2, a.min_module_size, a.merge_diss,
+                   a.tree_cut, a.deep_split, a.reassign_kme, 0.3, a.min_jaccard, a.format)
+            return 0
         coex(a.mapping, a.out, a.value, a.reactions, a.min_prevalence, a.pseudocount, a.transform, a.correlation,
              a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format,
              a.tree_cut, a.deep_split, a.block, a.reassign_kme, adjust=a.adjust)

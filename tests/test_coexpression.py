@@ -113,3 +113,43 @@ def test_adjust_block(tmp_path):
                   fmt="tsv")
     tr = tabs["module_traits"]
     assert not (tr[(tr["test"] == "mann-whitney")]["p"] < 0.01).any()
+
+
+def test_condition_specific_modules(tmp_path):
+    """module A co-expressed only in 'case', B and C in both conditions, 20 reaction groups active only in case"""
+    rng = np.random.default_rng(5)
+    n = 40
+    samples = ["S%02d" % i for i in range(2 * n)]
+    group = np.array(["case"] * n + ["control"] * n)
+    f = rng.normal(size=(3, 2 * n))
+    rows = []
+    for j in range(170):
+        mod = j // 30 if j < 90 else None
+        if mod == 0:                                   # A: shared factor in case only
+            act = np.where(group == "case", 1.2 * f[0], 0) + rng.normal(scale=0.5, size=2 * n)
+        else:
+            act = (1.2 * f[mod] if mod is not None else 0) + rng.normal(scale=0.5, size=2 * n)
+        mg = rng.lognormal(3, 0.3, size=2 * n)
+        mt = mg * np.exp(act)
+        if j >= 150:                                   # active only in case
+            mt = np.where(group == "case", mt, 0.0)
+        for i, s in enumerate(samples):
+            rows.append({"sample_id": s, "mnx_id": "MNXR%03d" % j, "confidence": "specific", "mg_tpm": mg[i],
+                         "mt_tpm": mt[i]})
+    d = tmp_path / "map"
+    write_table(pd.DataFrame(rows), str(d), "community_reactions", "tsv")
+    meta = pd.DataFrame({"sample_id": samples, "group": group})
+    tabs = cx.run_by(str(d), str(tmp_path / "by"), "group", metadata=meta, min_module_size=10, fmt="tsv")
+    act = tabs["condition_active"]
+    assert act[(act["condition"] == "control") & act["mnx_id"].isin(["MNXR160"])]["active"].sum() == 0
+    mods = tabs["modules"]
+    case = mods[mods["condition"] == "case"].set_index("mnx_id")["module"]
+    ctrl = mods[mods["condition"] == "control"].set_index("mnx_id")["module"]
+    a_case = case[["MNXR%03d" % j for j in range(30)]].value_counts().index[0]
+    assert a_case != "M0"
+    assert (ctrl.reindex(["MNXR%03d" % j for j in range(30)]) == "M0").mean() > 0.7   # no module A in controls
+    m = tabs["module_matches"].set_index(["condition", "module"])["class"]
+    assert m[("case", a_case)] == "specific"
+    for k in (1, 2):
+        mb = case[["MNXR%03d" % j for j in range(30 * k, 30 * k + 30)]].value_counts().index[0]
+        assert m[("case", mb)] == "conserved"

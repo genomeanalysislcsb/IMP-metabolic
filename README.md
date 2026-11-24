@@ -98,6 +98,15 @@ correlation ≥ 0.82; eigengenes, module membership, hubs, module diversity and 
 imp-metabolic coexpression --mapping mapping/ --out coexpression/ --metadata metadata.tsv --traits group
 ```
 
+The pooled network finds modules whose activity *level* differs between groups. Modules that exist only in one
+condition need one network per condition: `--by group [--block site]` builds, per condition (within each site),
+the active reaction groups (metaT TPM ≥ `--active-tpm` in ≥ 50 % of the condition's samples), a network and
+modules from that condition's samples only, and compares the modules of two conditions of the same site by their
+overlap (shared reaction groups, Jaccard, hypergeometric test against the reaction groups active in both, BH):
+*conserved* (mutual best partners, Jaccard ≥ `--min-jaccard`), *partial* (split, merged or shifted) or *specific*
+(no significant partner). Tables `condition_active`, `modules`, `module_summary`, `module_overlap`,
+`module_matches`. Groups of very different size give the larger one more power (finer modules); compare with care.
+
 ## Outputs
 
 | directory / table | content |
