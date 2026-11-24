@@ -164,12 +164,17 @@ def cut_tree(Z, D, min_size=20, deep_split=2):
     """module labels (0 = unassigned): dynamic tree cut if the package is installed, else the static cut of the
     tree with most clusters of >= min_size members"""
     try:
-        from dynamicTreeCut import cutreeHybrid
-        res = cutreeHybrid(Z, squareform(D, checks=False), minClusterSize=min_size, deepSplit=deep_split,
-                           verbose=0)
+        import dynamicTreeCut.dynamicTreeCut as dtc
+        from scipy.stats import rankdata
+        # dynamicTreeCut 0.1.x indexes arrays with scipy's rankdata, which returns floats in current scipy
+        dtc.rankdata = lambda *a, **k: np.asarray(rankdata(*a, **k)).astype(int)
+        res = dtc.cutreeHybrid(Z, squareform(D, checks=False), minClusterSize=min_size, deepSplit=deep_split,
+                               verbose=0)
         return np.asarray(res["labels"]).astype(int), "dynamicTreeCut.cutreeHybrid"
     except ImportError:
         pass
+    except Exception as e:                                  # noqa: BLE001 (an incompatible version: fall back)
+        log.warning("dynamicTreeCut failed (%s: %s): static cut instead", type(e).__name__, e)
     best, best_n = None, -1
     for t in np.unique(np.round(Z[:, 2], 4))[::-1]:
         lab = fcluster(Z, t=t, criterion="distance")
