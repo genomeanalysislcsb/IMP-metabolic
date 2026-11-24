@@ -107,6 +107,12 @@ overlap (shared reaction groups, Jaccard, hypergeometric test against the reacti
 (no significant partner). Tables `condition_active`, `modules`, `module_summary`, `module_overlap`,
 `module_matches`. Groups of very different size give the larger one more power (finer modules); compare with care.
 
+**Taxon-resolved activity.** `imp-metabolic activity` sums, per sample, the metaG and metaT reads / TPM of the genes
+of each genus (or `--rank`) on its high- and medium-quality MAGs per KEGG pathway (or per reaction group,
+`--unit reaction`), each gene once per pathway, and the relative expression metaT TPM / metaG TPM — the species-
+and gene-level activity of Villette et al. (2025). Table `taxon_activity`; `imp-explorer networks --activity`
+brings it into a release, where the cohort analysis tests it within site like the other layers.
+
 ## Outputs
 
 | directory / table | content |

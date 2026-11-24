@@ -5,6 +5,7 @@
   imp-metabolic map --refdb REFDB --imp-root ROOT | --samples SHEET --out MAPPING
                                                                            genes -> reactions, community, MAGs
   imp-metabolic networks --mapping MAPPING --refdb REFDB --out NETS        networks + topology
+  imp-metabolic activity --mapping MAPPING --refdb REFDB --out ACT        genus x pathway activity (MT/MG)
   imp-metabolic coexpression --mapping MAPPING --out COEX [--metadata M --traits group]
                                                                            co-expression modules (WGCNA)
 """
@@ -131,6 +132,15 @@ def main(argv=None):
                    "a module conserved [0.2]")
     c.add_argument("--traits", default="", help="metadata columns to associate with the modules (comma-separated)")
     c.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
+    t = sub.add_parser("activity", help="taxon-resolved abundance and activity (genus x KEGG pathway, metaT / metaG)")
+    t.add_argument("--mapping", required=True)
+    t.add_argument("--refdb", required=True)
+    t.add_argument("--out", required=True)
+    t.add_argument("--rank", default="genus", help="GTDB rank of the MAGs [genus]")
+    t.add_argument("--unit", choices=("pathway", "reaction"), default="pathway", help="feature per taxon [pathway]")
+    t.add_argument("--reactions", choices=("specific", "all"), default="specific")
+    t.add_argument("--quality", default="high,medium")
+    t.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
 
@@ -165,6 +175,10 @@ def main(argv=None):
             [x.strip() for x in a.keep_currency.split(",") if x.strip()], a.currency_mode, a.pair_min_reactions,
             [tuple(ln.rstrip("\n").split("\t")[:2]) for ln in open(a.currency_pairs)
              if ln.strip() and not ln.startswith("#") and "\t" in ln] if a.currency_pairs else ())
+        return 0
+    if a.cmd == "activity":
+        from .activity import run as act
+        act(a.mapping, a.refdb, a.out, a.rank, a.unit, a.reactions, tuple(a.quality.split(",")), a.format)
         return 0
     if a.cmd == "coexpression":
         import pandas as pd

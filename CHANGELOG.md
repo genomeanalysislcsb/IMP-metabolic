@@ -26,6 +26,9 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- **Taxon-resolved activity** (`imp-metabolic activity`): genus (or other rank) x KEGG pathway (or reaction group)
+  metaG / metaT reads and TPM and relative expression per sample, from the genes on the MAGs (each gene once per
+  pathway); table `taxon_activity`.
 - coexpression `--by`: `--permutations N` (condition labels shuffled within each block, whole analysis repeated;
   tables `class_null`, `class_tests` with empirical p-values of the observed numbers of conserved / partial / weak /
   specific modules), class *weak* (significant overlap with Jaccard < 0.1), `--refdb` annotates the modules

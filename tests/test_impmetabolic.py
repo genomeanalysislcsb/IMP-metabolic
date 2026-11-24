@@ -182,3 +182,19 @@ def test_annotate_modules(tmp_path):
     assert a.loc["M1", "distinct_ecs"] == 4 and "Bacteroides" in a.loc["M1", "genera"]
     assert "Blautia_A:100%" in a.loc["M2", "genera"]
     assert set(paths.loc[paths["module"] == "M1", "pathway"]) == {"map00010"}
+
+
+def test_taxon_activity(tmp_path):
+    _, refdb, root = setup(tmp_path)
+    mp_ = str(tmp_path / "map")
+    cli(["map", "--refdb", refdb, "--imp-root", root, "--out", mp_, "--threads", "1", "--format", "tsv"])
+    act = str(tmp_path / "act")
+    assert cli(["activity", "--mapping", mp_, "--refdb", refdb, "--out", act, "--format", "tsv"]) == 0
+    t = read_table(act, "taxon_activity")
+    s1 = t[t["sample_id"] == "S1"].set_index(["taxon", "feature"])
+    # Bacteroides (bin.1): G1-G3 in glycolysis; Blautia_A (bin.2): G4 glycolysis, G5 fatty acid degr. (via EC 1.1.1.1)
+    assert s1.loc[("Bacteroides", "map00010"), "n_genes"] == "3"
+    assert s1.loc[("Blautia_A", "map00010"), "n_genes"] == "1"
+    assert ("Blautia_A", "map00071") in s1.index
+    g1 = s1.loc[("Bacteroides", "map00010")]
+    assert abs(float(g1["mta"]) - float(g1["mt_tpm"]) / float(g1["mg_tpm"])) < 1e-9
