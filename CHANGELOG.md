@@ -26,3 +26,8 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- **Co-expression** (`imp-metabolic coexpression`): WGCNA of reaction groups across a cohort in Python, after
+  Villette et al. 2025: metaT / metaG ratio by default, metaT or metaG alone when only one omic is available;
+  prevalence filter with absent values kept missing, one pseudocount, Yeo-Johnson transform, signed adjacency with
+  scale-free power, TOM, dynamic tree cut (optional dependency dynamicTreeCut), eigengene merging, kME / kWithin,
+  hubs, module diversity, module–trait tests with BH-FDR over all modules and traits.

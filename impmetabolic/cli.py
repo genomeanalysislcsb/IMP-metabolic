@@ -5,6 +5,8 @@
   imp-metabolic map --refdb REFDB --imp-root ROOT | --samples SHEET --out MAPPING
                                                                            genes -> reactions, community, MAGs
   imp-metabolic networks --mapping MAPPING --refdb REFDB --out NETS        networks + topology
+  imp-metabolic coexpression --mapping MAPPING --out COEX [--metadata M --traits group]
+                                                                           co-expression modules (WGCNA)
 """
 import argparse
 import logging
@@ -81,6 +83,26 @@ def main(argv=None):
     n.add_argument("--active-tpm", type=float, default=1.0, help="metaT TPM of a reaction group to count as active [1]")
     n.add_argument("--threads", type=int, default=4)
     n.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
+    c = sub.add_parser("coexpression", help="co-expression network (WGCNA) of reaction groups across the cohort")
+    c.add_argument("--mapping", required=True, help="output of imp-metabolic map")
+    c.add_argument("--out", required=True)
+    c.add_argument("--value", choices=("auto", "mta", "mt", "mg"), default="auto", help="auto: metaT / metaG ratio "
+                   "with metaG and metaT, metaT TPM with metaT only, metaG TPM with metaG only [auto]")
+    c.add_argument("--reactions", choices=("all", "specific"), default="all", help="reaction groups used [all]")
+    c.add_argument("--min-prevalence", type=float, default=0.5, help="share of samples a reaction group must be "
+                   "present in [0.5]")
+    c.add_argument("--pseudocount", type=float, help="TPM added to metaT and metaG for the ratio [half the smallest "
+                   "positive TPM]")
+    c.add_argument("--transform", choices=("yeo-johnson", "log2", "none"), default="yeo-johnson")
+    c.add_argument("--correlation", choices=("pearson", "spearman"), default="pearson")
+    c.add_argument("--power", type=int, help="soft-threshold power [lowest power with scale-free R2 >= --r2]")
+    c.add_argument("--r2", type=float, default=0.8)
+    c.add_argument("--min-module-size", type=int, default=20)
+    c.add_argument("--merge-diss", type=float, default=0.18, help="merge modules whose eigengenes correlate above "
+                   "1 - this [0.18]")
+    c.add_argument("--metadata", help="TSV/CSV with sample_id and trait columns (ids as in the mapping)")
+    c.add_argument("--traits", default="", help="metadata columns to associate with the modules (comma-separated)")
+    c.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", datefmt="%H:%M:%S")
 
@@ -111,6 +133,17 @@ def main(argv=None):
         seeds = SEEDS if a.seeds == "default" else (None if a.seeds == "none" else a.seeds)
         run(a.mapping, a.refdb, a.out, tuple(x for x in a.ranks.split(",") if x), tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
             a.threads, tuple(x for x in a.sets.split(",") if x), a.active_tpm)
+        return 0
+    if a.cmd == "coexpression":
+        import pandas as pd
+        from .coexpression import run as coex
+        meta = None
+        if a.metadata:
+            meta = pd.read_csv(a.metadata, sep="," if a.metadata.endswith(".csv") else "\t", dtype=str)
+            if "sample_id" not in meta.columns:
+                meta = meta.rename(columns={meta.columns[0]: "sample_id"})
+        coex(a.mapping, a.out, a.value, a.reactions, a.min_prevalence, a.pseudocount, a.transform, a.correlation,
+             a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format)
         return 0
     return 1
 

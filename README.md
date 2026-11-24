@@ -79,6 +79,19 @@ product with the stoichiometry. MetaNetX equations are undirected, so reversibil
 thermodynamics are added; the scope treats reactions as reversible by default. For topology, the metabolite graph
 (substrate – product of the same reaction) leaves out the currency metabolites, which otherwise become hubs.
 
+**Co-expression networks.** `imp-metabolic coexpression` builds a weighted co-expression network (WGCNA) of the
+reaction groups across the samples of a cohort, after Villette et al. (2025): by default on the relative expression
+(metaT / metaG TPM) when the cohort has both omics, on metaT TPM with metaT only and on metaG TPM (co-abundance)
+with metaG only (`--value`). Reaction groups present in ≥ 50 % of the samples; absent values stay missing (not 0);
+Yeo-Johnson transform; signed adjacency with the soft-threshold power from the scale-free fit; topological overlap;
+modules by the dynamic tree cut (`pip install .[coexpression]`; otherwise a static cut), merged at eigengene
+correlation ≥ 0.82; eigengenes, module membership, hubs, module diversity and module–trait association
+(`--metadata`, `--traits`).
+
+```bash
+imp-metabolic coexpression --mapping mapping/ --out coexpression/ --metadata metadata.tsv --traits group
+```
+
 ## Outputs
 
 | directory / table | content |
@@ -93,6 +106,8 @@ thermodynamics are added; the scope treats reactions as reversible by default. F
 | `networks/pan_reactome`, `pan_summary` | taxon × reaction: MAGs carrying it, share, core / accessory / rare; per taxon pan, core and accessory sizes |
 | `networks/scope` | metabolites reachable from the seeds (default: minimal glucose medium, `impmetabolic/data/seeds_minimal.tsv`) |
 | `networks/mag_coverage` | share of the community's reactions found in its MAGs |
+| `coexpression/modules` | reaction group, module (M0 = unassigned), kME, kWithin, kTotal, hub (top 5 % kTotal), intramodular hub (top 10 % kWithin of its module) |
+| `coexpression/module_summary`, `eigengenes`, `module_traits`, `soft_threshold` | module size, density, connectivity, diversity; eigengene per sample; association with traits (r, p, q); scale-free fit per power |
 | `networks/graphml/` | the networks as GraphML (Cytoscape), with `--graphml` |
 
 ## Roadmap

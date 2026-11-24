@@ -13,6 +13,7 @@ dependencies = ["pandas>=2.0", "networkx>=3.0", "pyarrow>=14"]
 
 [project.optional-dependencies]
 fast = ["duckdb>=1.0"]
+coexpression = ["dynamicTreeCut>=0.1"]
 extra-sources = ["pyreadr>=0.5", "rdkit>=2024.3"]
 test = ["pytest"]
 
