@@ -108,6 +108,8 @@ def main(argv=None):
     c.add_argument("--power", type=int, help="soft-threshold power [lowest power with scale-free R2 >= --r2]")
     c.add_argument("--r2", type=float, default=0.8)
     c.add_argument("--min-module-size", type=int, default=20)
+    c.add_argument("--tree-cut", choices=("dynamic", "static"), default="dynamic")
+    c.add_argument("--deep-split", type=int, choices=range(5), default=2, help="0 (few large modules) .. 4 [2]")
     c.add_argument("--merge-diss", type=float, default=0.18, help="merge modules whose eigengenes correlate above "
                    "1 - this [0.18]")
     c.add_argument("--metadata", help="TSV/CSV with sample_id and trait columns (ids as in the mapping)")
@@ -157,7 +159,8 @@ def main(argv=None):
             if "sample_id" not in meta.columns:
                 meta = meta.rename(columns={meta.columns[0]: "sample_id"})
         coex(a.mapping, a.out, a.value, a.reactions, a.min_prevalence, a.pseudocount, a.transform, a.correlation,
-             a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format)
+             a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format,
+             a.tree_cut, a.deep_split)
         return 0
     return 1
 

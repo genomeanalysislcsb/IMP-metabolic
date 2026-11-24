@@ -12,9 +12,9 @@ genes, e.g. substrate variants of one EC) are collapsed into one feature (listed
 the smallest positive TPM); Yeo-Johnson power transform per reaction group (as sklearn's PowerTransformer in the
 paper; --transform log2 / none); correlations from the pairs of samples where both are present; signed adjacency
 ((1 + r) / 2) ** power with the power chosen by the scale-free topology fit (lowest power with R2 >= --r2, or
---power); topological overlap (TOM); average-linkage clustering of 1 - TOM; modules by the dynamic tree cut
-(package dynamicTreeCut, cutreeHybrid, deepSplit 2) or, without it, the static cut that gives most modules of at
-least --min-module-size; modules merged when their eigengenes correlate above 1 - --merge-diss (0.18 as in the
+--power); topological overlap (TOM); average-linkage clustering of 1 - TOM; modules by an adaptive
+branch cut after the Dynamic Tree method (dynamic_cut, deepSplit 2 as in cutreeHybrid, without its PAM stage;
+--tree-cut static: the static cut with most modules of at least --min-module-size); modules merged when their eigengenes correlate above 1 - --merge-diss (0.18 as in the
 paper); eigengenes = first principal component; module membership kME, intramodular connectivity kWithin, hubs
 (top 5 % kTotal) and intramodular hubs (top 10 % kWithin per module); module diversity (Shannon index of the summed
 values of the module's members, as in the paper); module-trait association with sample metadata (categorical: point-
@@ -160,21 +160,73 @@ def tom(A):
     return T
 
 
-def cut_tree(Z, D, min_size=20, deep_split=2):
-    """module labels (0 = unassigned): dynamic tree cut if the package is installed, else the static cut of the
-    tree with most clusters of >= min_size members"""
-    try:
-        import dynamicTreeCut.dynamicTreeCut as dtc
-        from scipy.stats import rankdata
-        # dynamicTreeCut 0.1.x indexes arrays with scipy's rankdata, which returns floats in current scipy
-        dtc.rankdata = lambda *a, **k: np.asarray(rankdata(*a, **k)).astype(int)
-        res = dtc.cutreeHybrid(Z, squareform(D, checks=False), minClusterSize=min_size, deepSplit=deep_split,
-                               verbose=0)
-        return np.asarray(res["labels"]).astype(int), "dynamicTreeCut.cutreeHybrid"
-    except ImportError:
-        pass
-    except Exception as e:                                  # noqa: BLE001 (an incompatible version: fall back)
-        log.warning("dynamicTreeCut failed (%s: %s): static cut instead", type(e).__name__, e)
+MAX_CORE_SCATTER = (0.64, 0.73, 0.82, 0.91, 0.95)            # per deepSplit 0..4, as in WGCNA's cutreeHybrid
+
+
+def dynamic_cut(Z, min_size=20, deep_split=2, cut_height=0.99):
+    """adaptive branch cut of a hierarchical tree, after the 'Dynamic Tree' idea of Langfelder et al. 2008
+    (Bioinformatics 24:719): walking down from the root, a branch is split into its two sub-branches when both are
+    large enough (>= min_size) and each is separated from the joining height by a gap of at least min_gap; otherwise
+    the branch is one module (or unassigned if smaller than min_size). Heights are scaled to the tree's range;
+    branches joining above cut_height (default 99 % of the range) are always split; deep_split 0..4 sets the core
+    scatter and gap as WGCNA's cutreeHybrid (maxCoreScatter 0.64..0.95, minGap = (1 - maxCoreScatter) * 3/4).
+    Unlike cutreeHybrid there is no second (PAM) stage: members of no branch stay unassigned (M0)."""
+    n = Z.shape[0] + 1
+    h = Z[:, 2]
+    lo, hi = float(h.min()), float(h.max())
+    rng = (hi - lo) or 1.0
+    scaled = (h - lo) / rng
+    max_scatter = MAX_CORE_SCATTER[max(0, min(4, int(deep_split)))]
+    min_gap = (1 - max_scatter) * 3 / 4
+    size = np.ones(2 * n - 1, dtype=int)
+    for i in range(n - 1):
+        size[n + i] = size[int(Z[i, 0])] + size[int(Z[i, 1])]
+    # core height of a branch: mean of the merge heights inside it (leaves: 0)
+    tot = np.zeros(2 * n - 1)
+    cnt = np.zeros(2 * n - 1)
+    for i in range(n - 1):
+        a, b = int(Z[i, 0]), int(Z[i, 1])
+        tot[n + i] = tot[a] + tot[b] + scaled[i]
+        cnt[n + i] = cnt[a] + cnt[b] + 1
+    core = np.divide(tot, cnt, out=np.zeros_like(tot), where=cnt > 0)
+
+    def leaves(node):
+        out, stack = [], [node]
+        while stack:
+            x = stack.pop()
+            if x < n:
+                out.append(x)
+            else:
+                stack += [int(Z[x - n, 0]), int(Z[x - n, 1])]
+        return out
+    labels = np.zeros(n, dtype=int)
+    k = 0
+    stack = [2 * n - 2]
+    while stack:
+        node = stack.pop()
+        if node < n:
+            continue
+        i = node - n
+        a, b = int(Z[i, 0]), int(Z[i, 1])
+        if scaled[i] > cut_height:
+            stack += [a, b]
+            continue
+        split = all(size[c] >= min_size and scaled[i] - core[c] >= min_gap for c in (a, b))
+        if split:
+            stack += [a, b]
+        elif size[node] >= min_size and core[node] <= max_scatter:
+            k += 1
+            labels[leaves(node)] = k
+        else:                               # a loose branch: look for modules inside it
+            stack += [c for c in (a, b) if size[c] >= min_size]
+    return labels
+
+
+def cut_tree(Z, D, min_size=20, deep_split=2, method="dynamic"):
+    """module labels (0 = unassigned): 'dynamic' = dynamic_cut; 'static' = the static cut of the tree with most
+    clusters of >= min_size members"""
+    if method == "dynamic":
+        return dynamic_cut(Z, min_size, deep_split), "dynamic branch cut (deepSplit %d)" % deep_split
     best, best_n = None, -1
     for t in np.unique(np.round(Z[:, 2], 4))[::-1]:
         lab = fcluster(Z, t=t, criterion="distance")
@@ -184,7 +236,7 @@ def cut_tree(Z, D, min_size=20, deep_split=2):
             best, best_n = lab, n
     sizes = np.bincount(best)
     lab = np.where(sizes[best] >= min_size, best, 0)
-    return lab, "static cut (install dynamicTreeCut for the dynamic tree cut of WGCNA)"
+    return lab, "static cut"
 
 
 def eigengenes(Xt, labels):
@@ -263,7 +315,7 @@ def traits(ME, meta, columns):
 
 def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=None, how="yeo-johnson",
         method="pearson", power=None, r2=0.8, min_module_size=20, merge_diss=0.18, metadata=None,
-        trait_cols=(), fmt="auto"):
+        trait_cols=(), fmt="auto", tree_cut="dynamic", deep_split=2):
     com = read_table(mapping, "community_reactions")
     mg, mt = matrices(com, confidence)
     X, value, pc, prev = values(mg, mt, value, min_prev, pseudocount)
@@ -284,7 +336,7 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
     D = 1 - T
     np.fill_diagonal(D, 0)
     Z = linkage(squareform(D, checks=False), "average")
-    labels, how_cut = cut_tree(Z, D, min_module_size)
+    labels, how_cut = cut_tree(Z, D, min_module_size, deep_split, tree_cut)
     labels = relabel(merge_modules(Xt, labels, merge_diss))
     ME = eigengenes(Xt, labels)
     log.info("%d modules (%s), %d of %d reaction groups unassigned", ME.shape[1], how_cut, int((labels == 0).sum()),

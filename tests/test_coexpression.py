@@ -64,3 +64,13 @@ def test_planted_modules(tmp_path):
     assert set(read_table(str(tmp_path / "coex"), "module_summary")["module"]) == set(mods)
     assert not tabs["modules"]["mnx_id"].str.startswith("MNXV").any()             # collapsed into MNXR0xx
     assert (tabs["modules"].set_index("mnx_id").loc["MNXR001", "n_same_profile"]) == 2
+
+
+def test_tree_cuts(tmp_path):
+    """dynamic and static cut both separate the three planted modules"""
+    d, meta = cohort(tmp_path)
+    for cut in ("dynamic", "static"):
+        tabs = cx.run(d, str(tmp_path / cut), min_module_size=10, fmt="tsv", tree_cut=cut)
+        m = tabs["modules"].set_index("mnx_id")["module"]
+        top = [m[["MNXR%03d" % j for j in range(30 * k, 30 * k + 30)]].value_counts().index[0] for k in range(3)]
+        assert len(set(top)) == 3 and "M0" not in top, cut

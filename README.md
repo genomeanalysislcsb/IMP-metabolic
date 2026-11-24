@@ -90,7 +90,7 @@ reaction groups across the samples of a cohort, after Villette et al. (2025): by
 (metaT / metaG TPM) when the cohort has both omics, on metaT TPM with metaT only and on metaG TPM (co-abundance)
 with metaG only (`--value`). Reaction groups present in ≥ 50 % of the samples; absent values stay missing (not 0);
 Yeo-Johnson transform; signed adjacency with the soft-threshold power from the scale-free fit; topological overlap;
-modules by the dynamic tree cut (`pip install .[coexpression]`; otherwise a static cut), merged at eigengene
+modules by an adaptive branch cut after WGCNA's Dynamic Tree method (`--deep-split`, `--tree-cut static`), merged at eigengene
 correlation ≥ 0.82; eigengenes, module membership, hubs, module diversity and module–trait association
 (`--metadata`, `--traits`).
 

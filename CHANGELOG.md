@@ -26,6 +26,8 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- coexpression: own adaptive branch cut after WGCNA's Dynamic Tree method (`--deep-split`, `--tree-cut static`);
+  the package dynamicTreeCut does not run with NumPy 2 (np.in1d, float ranks) and is no longer used.
 - coexpression: reaction groups with identical profiles (same genes: substrate variants of one EC, subunits) are one
   feature (`same_profile`, `n_same_profile` in `modules`); networks: `keystones` keeps the keystones and the top
   10 % load per community (5.5 M rows for Expobiome before).
