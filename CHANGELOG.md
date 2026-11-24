@@ -26,6 +26,9 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- coexpression: kME-based (re)assignment after the tree cut as WGCNA's blockwiseModules (`--reassign-kme` 0.5,
+  members below kME 0.3 dropped): the branch cut has no PAM stage and left 2,188 of 3,190 Expobiome profiles
+  unassigned.
 - coexpression: `--block` (e.g. site): module–trait tests also within each block level, for designs where groups
   and sites are confounded (Expobiome: PD only in Kassel, RA only in Berlin, HC in both); column `block` in
   `module_traits` (`all` = pooled).

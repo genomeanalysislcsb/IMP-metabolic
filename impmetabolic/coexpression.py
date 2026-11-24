@@ -19,7 +19,9 @@ paper); eigengenes = first principal component; module membership kME, intramodu
 (top 5 % kTotal) and intramodular hubs (top 10 % kWithin per module); module diversity (Shannon index of the summed
 values of the module's members, as in the paper); module-trait association with sample metadata (categorical: point-
 biserial correlation per level and Kruskal-Wallis; numeric: Spearman), over all samples and, with --block, within
-each block level (groups confounded with sites), BH-FDR over all modules, traits and blocks.
+each block level (groups confounded with sites), BH-FDR over all modules, traits and blocks. After the tree cut,
+reaction groups are (re)assigned by module membership as in WGCNA's blockwiseModules: unassigned ones join the
+module with the highest kME >= --reassign-kme (0.5), members with kME < 0.3 are dropped.
 """
 import logging
 import os
@@ -274,6 +276,33 @@ def relabel(labels):
     return np.array([new.get(m, 0) for m in labels])
 
 
+def reassign(Xt, labels, min_kme=0.5, min_stay=0.3, rounds=3):
+    """kME-based module assignment after the tree cut, as WGCNA's blockwiseModules (reassignThreshold /
+    minKMEtoStay): unassigned reaction groups join the module whose eigengene they correlate with most if that kME
+    is >= min_kme; members whose kME to their own module is < min_stay become unassigned"""
+    Z = Xt.fillna(0).values
+    Zs = (Z - Z.mean(axis=0)) / np.where(Z.std(axis=0) > 0, Z.std(axis=0), 1)
+    labels = labels.copy()
+    for _ in range(rounds):
+        ME = eigengenes(Xt, labels)
+        if ME.shape[1] == 0:
+            return labels
+        E = (ME.values - ME.values.mean(axis=0)) / np.where(ME.values.std(axis=0) > 0, ME.values.std(axis=0), 1)
+        K = Zs.T @ E / len(Z)                              # features x modules: correlation with the eigengenes
+        mods = np.array(ME.columns)
+        best = K.argmax(axis=1)
+        new = labels.copy()
+        own = np.array([K[i, list(mods).index(m)] if m in mods else np.nan for i, m in enumerate(labels)])
+        new[(labels > 0) & (own < min_stay)] = 0
+        free = new == 0
+        take = free & (K[np.arange(len(labels)), best] >= min_kme)
+        new[take] = mods[best[take]]
+        if (new == labels).all():
+            break
+        labels = new
+    return labels
+
+
 def shannon(v):
     v = np.asarray(v, float)
     v = v[v > 0]
@@ -332,7 +361,8 @@ def traits(ME, meta, columns, block=None):
 
 def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=None, how="yeo-johnson",
         method="pearson", power=None, r2=0.8, min_module_size=20, merge_diss=0.18, metadata=None,
-        trait_cols=(), fmt="auto", tree_cut="dynamic", deep_split=2, block=None):
+        trait_cols=(), fmt="auto", tree_cut="dynamic", deep_split=2, block=None, reassign_kme=0.5,
+        min_kme_to_stay=0.3):
     com = read_table(mapping, "community_reactions")
     mg, mt = matrices(com, confidence)
     X, value, pc, prev = values(mg, mt, value, min_prev, pseudocount)
@@ -355,9 +385,15 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
     Z = linkage(squareform(D, checks=False), "average")
     labels, how_cut = cut_tree(Z, D, min_module_size, deep_split, tree_cut)
     labels = relabel(merge_modules(Xt, labels, merge_diss))
+    n_tree = int((labels == 0).sum())
+    if reassign_kme:
+        labels = reassign(Xt, labels, reassign_kme, min_kme_to_stay)
     ME = eigengenes(Xt, labels)
-    log.info("%d modules (%s), %d of %d reaction groups unassigned", ME.shape[1], how_cut, int((labels == 0).sum()),
-             len(labels))
+    log.info("%d modules (%s), %d of %d reaction groups unassigned (%d after the tree cut; kME reassignment %s)",
+             ME.shape[1], how_cut, int((labels == 0).sum()), len(labels), n_tree,
+             "to the module with the highest kME >= %.2f, members below %.2f dropped" % (reassign_kme,
+                                                                                         min_kme_to_stay)
+             if reassign_kme else "off")
     kTotal = A.sum(axis=1)
     kWithin = np.array([A[i, labels == labels[i]].sum() if labels[i] else np.nan for i in range(len(labels))])
     Zf = Xt.fillna(0)
@@ -396,5 +432,6 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
                                                "confidence": confidence, "min_prevalence": min_prev,
                                                "pseudocount": pc, "transform": how, "correlation": method,
                                                "power": power, "min_module_size": min_module_size,
-                                               "merge_diss": merge_diss, "tree_cut": how_cut})
+                                               "merge_diss": merge_diss, "tree_cut": how_cut,
+                                               "reassign_kme": reassign_kme, "min_kme_to_stay": min_kme_to_stay})
     return tabs

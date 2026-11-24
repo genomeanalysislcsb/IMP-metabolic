@@ -88,3 +88,14 @@ def test_traits_within_block(tmp_path):
     mod_a = m[["MNXR%03d" % j for j in range(30)]].value_counts().index[0]
     w = tr[(tr["module"] == mod_a) & (tr["test"] == "mann-whitney")]
     assert (w["p"] < 0.01).all() and len(w) == 3                  # pooled and in each site
+
+
+def test_kme_reassignment(tmp_path):
+    """members of a planted module left out by the cut are reassigned by kME; noise stays unassigned"""
+    d, meta = cohort(tmp_path)
+    a = cx.run(d, str(tmp_path / "a"), min_module_size=10, fmt="tsv", reassign_kme=0)
+    b = cx.run(d, str(tmp_path / "b"), min_module_size=10, fmt="tsv", reassign_kme=0.5)
+    planted = ["MNXR%03d" % j for j in range(90)]
+    ma, mb = (x["modules"].set_index("mnx_id")["module"] for x in (a, b))
+    assert (mb[planted] != "M0").sum() >= (ma[planted] != "M0").sum()
+    assert (mb[["MNXR%03d" % j for j in range(90, 140)]] == "M0").mean() > 0.8

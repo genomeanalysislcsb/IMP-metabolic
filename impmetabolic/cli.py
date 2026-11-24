@@ -109,6 +109,8 @@ def main(argv=None):
     c.add_argument("--r2", type=float, default=0.8)
     c.add_argument("--min-module-size", type=int, default=20)
     c.add_argument("--tree-cut", choices=("dynamic", "static"), default="dynamic")
+    c.add_argument("--reassign-kme", type=float, default=0.5, help="after the tree cut, unassigned reaction groups "
+                   "join the module with the highest kME if >= this (0 = off) [0.5]")
     c.add_argument("--deep-split", type=int, choices=range(5), default=2, help="0 (few large modules) .. 4 [2]")
     c.add_argument("--merge-diss", type=float, default=0.18, help="merge modules whose eigengenes correlate above "
                    "1 - this [0.18]")
@@ -162,7 +164,7 @@ def main(argv=None):
                 meta = meta.rename(columns={meta.columns[0]: "sample_id"})
         coex(a.mapping, a.out, a.value, a.reactions, a.min_prevalence, a.pseudocount, a.transform, a.correlation,
              a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format,
-             a.tree_cut, a.deep_split, a.block)
+             a.tree_cut, a.deep_split, a.block, a.reassign_kme)
         return 0
     return 1
 
