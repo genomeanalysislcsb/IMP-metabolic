@@ -7,6 +7,8 @@
   imp-metabolic networks --mapping MAPPING --refdb REFDB --out NETS        networks + topology
   imp-metabolic activity --mapping MAPPING --refdb REFDB --out ACT        genus x pathway activity (MT/MG)
   imp-metabolic coexpression --mapping MAPPING --out COEX [--metadata M --traits group]
+  imp-metabolic coexpression --matrix RELEASE --assays scfa,bile_acids --transform log2 --out COEX_METAB
+  imp-metabolic link --a COEX --b COEX_METAB --metadata M --block site --out LINK
                                                                            co-expression modules (WGCNA)
 """
 import argparse
@@ -95,7 +97,10 @@ def main(argv=None):
     n.add_argument("--threads", type=int, default=4)
     n.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     c = sub.add_parser("coexpression", help="co-expression network (WGCNA) of reaction groups across the cohort")
-    c.add_argument("--mapping", required=True, help="output of imp-metabolic map")
+    c.add_argument("--mapping", help="output of imp-metabolic map (or --matrix)")
+    c.add_argument("--matrix", help="another omic instead of the reaction groups, e.g. metabolomics: an imp-explorer "
+                   "release (metab_values) or a long (sample_id, [assay,] feature_id, value) / wide table")
+    c.add_argument("--assays", default="", help="with --matrix: assays to use (comma-separated) [all]")
     c.add_argument("--out", required=True)
     c.add_argument("--value", choices=("auto", "mta", "mt", "mg"), default="auto", help="auto: metaT / metaG ratio "
                    "with metaG and metaT, metaT TPM with metaT only, metaG TPM with metaG only [auto]")
@@ -132,6 +137,14 @@ def main(argv=None):
                    "a module conserved [0.2]")
     c.add_argument("--traits", default="", help="metadata columns to associate with the modules (comma-separated)")
     c.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
+    k = sub.add_parser("link", help="correlate the module eigengenes of two co-expression runs (e.g. reaction "
+                       "groups and metabolites)")
+    k.add_argument("--a", required=True, help="first coexpression output")
+    k.add_argument("--b", required=True, help="second coexpression output")
+    k.add_argument("--out", required=True)
+    k.add_argument("--metadata", help="TSV/CSV with sample_id and the --block column")
+    k.add_argument("--block", help="metadata column: partial correlation within its levels (e.g. site)")
+    k.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     t = sub.add_parser("activity", help="taxon-resolved abundance and activity (genus x KEGG pathway, metaT / metaG)")
     t.add_argument("--mapping", required=True)
     t.add_argument("--refdb", required=True)
@@ -180,8 +193,22 @@ def main(argv=None):
         from .activity import run as act
         act(a.mapping, a.refdb, a.out, a.rank, a.unit, a.reactions, tuple(a.quality.split(",")), a.format)
         return 0
+    if a.cmd == "link":
+        import pandas as pd
+        from .coexpression import link_modules
+        meta = None
+        if a.metadata:
+            meta = pd.read_csv(a.metadata, sep="," if a.metadata.endswith(".csv") else "\t", dtype=str)
+            if "sample_id" not in meta.columns:
+                meta = meta.rename(columns={meta.columns[0]: "sample_id"})
+        link_modules(a.a, a.b, a.out, meta, a.block, a.format)
+        return 0
     if a.cmd == "coexpression":
         import pandas as pd
+        if not a.mapping and not a.matrix:
+            sys.exit("coexpression needs --mapping or --matrix")
+        if a.matrix and a.by:
+            sys.exit("--by works on reaction groups (--mapping) only")
         from .coexpression import run as coex
         meta = None
         if a.metadata:
@@ -199,7 +226,8 @@ def main(argv=None):
             return 0
         coex(a.mapping, a.out, a.value, a.reactions, a.min_prevalence, a.pseudocount, a.transform, a.correlation,
              a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format,
-             a.tree_cut, a.deep_split, a.block, a.reassign_kme, adjust=a.adjust)
+             a.tree_cut, a.deep_split, a.block, a.reassign_kme, adjust=a.adjust, matrix=a.matrix,
+             assays=[x for x in a.assays.split(",") if x] or None)
         return 0
     return 1
 

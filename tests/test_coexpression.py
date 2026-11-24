@@ -156,3 +156,39 @@ def test_condition_specific_modules(tmp_path):
     for k in (1, 2):
         mb = case[["MNXR%03d" % j for j in range(30 * k, 30 * k + 30)]].value_counts().index[0]
         assert m[("case", mb)] == "conserved"
+
+
+def test_matrix_and_link(tmp_path):
+    # metabolite co-abundance from a long table (release ids in upper case) linked to the reaction modules
+    d, meta = cohort(tmp_path)
+    rx = cx.run(d, str(tmp_path / "coex"), metadata=meta, trait_cols=["group"], min_module_size=10, fmt="tsv")
+    ME = rx["eigengenes"].pivot_table(index="sample_id", columns="module", values="eigengene")
+    mod_a = rx["module_traits"].sort_values("p").iloc[0]["module"]   # the module following the group
+    rng = np.random.default_rng(5)
+    n = len(ME)
+    other = rng.normal(size=n)
+    rows = []
+    for j in range(60):
+        base = ME[mod_a].values if j < 20 else (other if j < 40 else 0)
+        v = np.exp(2 * np.asarray(base) / np.std(ME[mod_a]) * 0.5 + rng.normal(scale=0.4, size=n))
+        for i, s in enumerate(ME.index):
+            if j >= 55 and i % 3:
+                continue                                             # rare: below 50 % prevalence
+            rows.append({"sample_id": s.upper(), "assay": "lcms" if j % 2 else "gcms",
+                         "feature_id": "m%02d" % j, "value": v[i]})
+    mf = tmp_path / "metab.tsv"
+    pd.DataFrame(rows).to_csv(mf, sep="\t", index=False)
+    mx = cx.run(None, str(tmp_path / "coexm"), how="log2", matrix=str(mf), metadata=meta, trait_cols=["group"],
+                min_module_size=8, fmt="tsv")
+    m = mx["modules"].set_index("feature")
+    assert len(m) == 55 and "name" in mx["modules"].columns
+    first = m.loc[["gcms:m00", "lcms:m01"] + ["%s:m%02d" % ("lcms" if j % 2 else "gcms", j) for j in range(2, 20)],
+                  "module"].value_counts()
+    assert first.index[0] != "M0" and first.iloc[0] >= 16
+    assert (mx["module_traits"]["q"] < 0.05).any()                    # metadata ids matched case-insensitively
+    meta = meta.assign(site=np.where(np.arange(n) % 2, "A", "B"))
+    L = cx.link_modules(str(tmp_path / "coex"), str(tmp_path / "coexm"), str(tmp_path / "link"), meta, "site",
+                        fmt="tsv")
+    top = L.iloc[0]
+    assert top["module_a"] == mod_a and top["module_b"] == first.index[0] and top["q_within"] < 1e-6
+    assert set(read_table(str(tmp_path / "link"), "module_links")["module_a"]) <= set(ME.columns)

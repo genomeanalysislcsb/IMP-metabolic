@@ -107,6 +107,18 @@ overlap (shared reaction groups, Jaccard, hypergeometric test against the reacti
 (no significant partner). Tables `condition_active`, `modules`, `module_summary`, `module_overlap`,
 `module_matches`. Groups of very different size give the larger one more power (finer modules); compare with care.
 
+**Metabolite co-abundance and linked modules.** `coexpression --matrix` runs the same network on another omic, e.g.
+the metabolomics of an imp-explorer release (`metab_values`; `--assays` to choose, `--transform log2`): values ≤ 0
+are below detection and treated as absent. `imp-metabolic link` then correlates the module eigengenes of two runs
+(reaction groups × metabolites) over the shared samples, Spearman overall and partial within `--block` (site), BH
+over all module pairs (table `module_links`).
+
+```
+imp-metabolic coexpression --matrix release/ --assays scfa,bile_acids,lcms_polar,gcms_untargeted --transform log2 \
+    --min-module-size 10 --metadata metadata.tsv --traits group --block site --out coexpression_metab/
+imp-metabolic link --a coexpression/ --b coexpression_metab/ --metadata metadata.tsv --block site --out link/
+```
+
 **Taxon-resolved activity.** `imp-metabolic activity` sums, per sample, the metaG and metaT reads / TPM of the genes
 of each genus (or `--rank`) on its high- and medium-quality MAGs per KEGG pathway (or per reaction group,
 `--unit reaction`), each gene once per pathway, and the relative expression metaT TPM / metaG TPM — the species-

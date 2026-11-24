@@ -4,6 +4,10 @@
 
 First version, built on the metabolic-network prototype (Artem Kokorin and Marie Mahieux, LCSB).
 
+- **Metabolite co-abundance** (`coexpression --matrix`): WGCNA of metabolomics (imp-explorer release or any long /
+  wide table) with the reaction-group pipeline; **`link`**: eigengene correlation between the modules of two runs,
+  overall and within a block (site).
+
 - **Reference database** (`imp-metabolic refdb download | build`): the prototype's catalogue (MetaNetX, KEGG REST,
   ModelSEED, BiGG, MetaCyc via gapseq, Rhea, ECDomainMiner, TCDB, ChEBI); one Parquet table per source table
   instead of a SQLite file, plus derived tables (`reactions`, `reaction_ec`, `metabolites`, KEGG links, MetaNetX

@@ -24,6 +24,16 @@ reaction groups are (re)assigned by module membership as in WGCNA's blockwiseMod
 module with the highest kME >= --reassign-kme (0.5), members with kME < 0.3 are dropped. --adjust site centres
 each transformed reaction group within each site before the correlations, so that site differences do not form
 modules of their own.
+
+--matrix: any other omic instead of the reaction groups, e.g. metabolomics: a long table (sample_id, [assay,]
+feature_id, value: imp-explorer's metab_values; a release directory is read with its metab_features for names) or a
+wide one (samples x features, first column the sample id). Values <= 0 or missing are absent (below detection), as
+absent reaction groups; features measured in >= --min-prevalence of the samples; --transform log2 suits
+concentrations and intensities. The module table then has the column feature (assay:feature_id) and name.
+
+link (link_modules): eigengenes of two co-expression runs (e.g. reaction groups and metabolites) correlated over the
+shared samples (sample ids matched case-insensitively): Spearman over all samples and, with a block (site), the
+partial correlation within blocks (ranks centred within each block level); BH-FDR over all module pairs.
 """
 import logging
 import os
@@ -125,6 +135,38 @@ def correlation(X, method="pearson", min_periods=5):
     C = X.corr(method=method, min_periods=min_periods).fillna(0).values.astype(np.float32)
     np.fill_diagonal(C, 1.0)
     return C
+
+
+def matrix_values(path, assays=None, min_prev=0.5):
+    """--matrix: -> (samples x features with NaN for absent, prevalence, feature -> name)"""
+    names = {}
+    if os.path.isdir(path):
+        v = read_table(path, "metab_values")
+        f = read_table(path, "metab_features", required=False)
+        if len(f) and "name" in f.columns:
+            names = dict(zip(f["assay"].astype(str) + ":" + f["feature_id"].astype(str), f["name"].astype(str)))
+    elif path.endswith(".parquet"):
+        v = pd.read_parquet(path)
+    else:
+        v = pd.read_csv(path, sep="," if path.endswith(".csv") else "\t")
+    if {"sample_id", "value"} <= set(v.columns) and ("feature_id" in v.columns or "feature" in v.columns):
+        fid = v["feature_id"] if "feature_id" in v.columns else v["feature"]
+        if "assay" in v.columns:
+            if assays:
+                keep = v["assay"].astype(str).isin(assays)
+                v, fid = v[keep], fid[keep]
+            fid = v["assay"].astype(str) + ":" + fid.astype(str)
+        v = v.assign(f=fid.astype(str), value=pd.to_numeric(v["value"], errors="coerce"))
+        X = v.pivot_table(index="sample_id", columns="f", values="value", aggfunc="mean")
+    else:
+        X = v.set_index(v.columns[0]).apply(pd.to_numeric, errors="coerce")
+    X.index = X.index.astype(str)
+    X.columns = X.columns.astype(str)
+    X.columns.name = None
+    X = X.where(X > 0)
+    prev = X.notna().mean()
+    keep = prev[prev >= min_prev].index
+    return X[keep], prev[keep], names
 
 
 # ----------------------------------------------------------------------------- WGCNA
@@ -364,15 +406,29 @@ def traits(ME, meta, columns, block=None):
 def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=None, how="yeo-johnson",
         method="pearson", power=None, r2=0.8, min_module_size=20, merge_diss=0.18, metadata=None,
         trait_cols=(), fmt="auto", tree_cut="dynamic", deep_split=2, block=None, reassign_kme=0.5,
-        min_kme_to_stay=0.3, adjust=None):
-    com = read_table(mapping, "community_reactions")
-    mg, mt = matrices(com, confidence)
-    X, value, pc, prev = values(mg, mt, value, min_prev, pseudocount)
-    n0 = X.shape[1]
-    X, members = collapse_duplicates(X)
-    log.info("value %s%s; %d samples, %d reaction groups present in >= %.0f %% of them, %d distinct profiles", value,
-             " (pseudocount %.3g TPM)" % pc if value == "mta" else "", X.shape[0], n0, 100 * min_prev, X.shape[1])
+        min_kme_to_stay=0.3, adjust=None, matrix=None, assays=None):
+    names = {}
+    if matrix:
+        X, prev, names = matrix_values(matrix, assays, min_prev)
+        value, pc = "matrix", None
+        n0 = X.shape[1]
+        X, members = collapse_duplicates(X)
+        log.info("matrix %s; %d samples, %d features measured in >= %.0f %% of them, %d distinct profiles", matrix,
+                 X.shape[0], n0, 100 * min_prev, X.shape[1])
+    else:
+        com = read_table(mapping, "community_reactions")
+        mg, mt = matrices(com, confidence)
+        X, value, pc, prev = values(mg, mt, value, min_prev, pseudocount)
+        n0 = X.shape[1]
+        X, members = collapse_duplicates(X)
+        log.info("value %s%s; %d samples, %d reaction groups present in >= %.0f %% of them, %d distinct profiles",
+                 value, " (pseudocount %.3g TPM)" % pc if value == "mta" else "", X.shape[0], n0, 100 * min_prev,
+                 X.shape[1])
     Xt = transform(X, how)
+    if metadata is not None and not set(metadata["sample_id"].astype(str)) & set(Xt.index):
+        up = {i.upper(): i for i in Xt.index}            # e.g. release ids (upper case) vs mapping ids
+        metadata = metadata.assign(sample_id=metadata["sample_id"].astype(str).str.upper().map(up)).dropna(
+            subset=["sample_id"])
     if adjust is not None and metadata is not None and adjust in metadata.columns:
         b = metadata.set_index(metadata["sample_id"].astype(str))[adjust].reindex(Xt.index).astype(str)
         Xt = Xt - Xt.groupby(b.values).transform("mean")       # within-block centring (present values only)
@@ -410,6 +466,9 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
                          "mean_value": X[Xt.columns].mean().values})
     mods["same_profile"] = mods["mnx_id"].map(members).fillna(mods["mnx_id"])
     mods["n_same_profile"] = mods["same_profile"].str.count(" ") + 1
+    if matrix:
+        mods = mods.rename(columns={"mnx_id": "feature"})
+        mods.insert(1, "name", mods["feature"].map(names).fillna(mods["feature"].str.split(":", n=1).str[-1]))
     asg = mods["module"] != "M0"
     mods["hub"] = asg & (mods["kTotal"] >= mods.loc[asg, "kTotal"].quantile(0.95))
     mods["intramodular_hub"] = asg & (mods["kWithin"] >= mods.groupby("module")["kWithin"].transform(
@@ -434,7 +493,8 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
     for k, v in tabs.items():
         write_table(v, out, k, fmt)
         rows[k] = int(len(v))
-    write_manifest(out, "coexpression", rows, {"mapping": os.path.abspath(mapping), "value": value,
+    write_manifest(out, "coexpression", rows, {"mapping": os.path.abspath(mapping) if mapping else "",
+                                               "matrix": os.path.abspath(matrix) if matrix else "", "value": value,
                                                "confidence": confidence, "min_prevalence": min_prev,
                                                "pseudocount": pc, "transform": how, "correlation": method,
                                                "power": power, "min_module_size": min_module_size,
@@ -653,3 +713,67 @@ def run_by(mapping, out, by, block=None, metadata=None, value="auto", confidence
                                                                                     if v is None or
                                                                                     isinstance(v, (int, float, str))}})
     return tabs
+
+
+# ----------------------------------------------------------------------------- link two runs
+def _eigengenes(d):
+    E = read_table(d, "eigengenes")
+    E["eigengene"] = pd.to_numeric(E["eigengene"], errors="coerce")
+    M = E.pivot_table(index="sample_id", columns="module", values="eigengene")
+    M.index = M.index.astype(str).str.upper()
+    return M
+
+
+def _sizes(d):
+    s = read_table(d, "module_summary", required=False)
+    return dict(zip(s["module"], pd.to_numeric(s["size"]))) if len(s) else {}
+
+
+def link_modules(a, b, out, metadata=None, block=None, fmt="auto"):
+    """eigengene correlation of the modules of two co-expression runs -> module_links"""
+    A, B = _eigengenes(a), _eigengenes(b)
+    ss = sorted(set(A.index) & set(B.index))
+    if len(ss) < 8:
+        raise ValueError("only %d shared samples between %s and %s" % (len(ss), a, b))
+    A, B = A.loc[ss], B.loc[ss]
+    blk = None
+    if block and metadata is not None and block in metadata.columns:
+        m = metadata.assign(_id=metadata["sample_id"].astype(str).str.upper()).drop_duplicates("_id")
+        blk = m.set_index("_id")[block].reindex(ss).astype(str)
+        RA, RB = A.rank(), B.rank()
+        WA = RA - RA.groupby(blk.values).transform("mean")
+        WB = RB - RB.groupby(blk.values).transform("mean")
+        k = blk.nunique()
+    rows = []
+    for ma in A.columns:
+        for mb in B.columns:
+            ok = A[ma].notna() & B[mb].notna()
+            n = int(ok.sum())
+            if n < 8:
+                continue
+            rho, p = stats.spearmanr(A.loc[ok, ma], B.loc[ok, mb])
+            r = {"module_a": ma, "module_b": mb, "n": n, "rho": float(rho), "p": float(p)}
+            if blk is not None:
+                rw = float(np.corrcoef(WA.loc[ok, ma], WB.loc[ok, mb])[0, 1])
+                df = n - 2 - (k - 1)
+                tt = rw * np.sqrt(df / max(1e-12, 1 - rw ** 2))
+                r.update({"rho_within": rw, "p_within": float(2 * stats.t.sf(abs(tt), df)) if df > 0 else np.nan})
+            rows.append(r)
+    L = pd.DataFrame(rows)
+    if len(L):
+        L["q"] = bh(L["p"].values)
+        if "p_within" in L.columns:
+            L["q_within"] = bh(L["p_within"].fillna(1).values)
+        sa, sb = _sizes(a), _sizes(b)
+        L.insert(1, "size_a", L["module_a"].map(sa))
+        L.insert(3, "size_b", L["module_b"].map(sb))
+        L = L.sort_values("p_within" if "p_within" in L.columns else "p")
+    os.makedirs(out, exist_ok=True)
+    write_table(L, out, "module_links", fmt)
+    write_manifest(out, "link", {"module_links": int(len(L))}, {"a": os.path.abspath(a), "b": os.path.abspath(b),
+                                                               "samples": len(ss), "block": block or ""})
+    log.info("%d x %d modules over %d shared samples: %d pairs, %d with q < 0.05%s", A.shape[1], B.shape[1], len(ss),
+             len(L), int((L["q"] < 0.05).sum()) if len(L) else 0,
+             ", %d within %s" % (int((L["q_within"] < 0.05).sum()), block) if len(L) and "q_within" in L.columns
+             else "")
+    return L
