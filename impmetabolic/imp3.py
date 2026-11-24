@@ -91,7 +91,9 @@ def bins(base, sample):
 
 
 def gene_reads(base, omics=("mg", "mt")):
-    """reads per gene and omic: DataFrame gene, omic, reads (IMP3 Stats/<omic>/gene_read_count.txt)"""
+    """reads per gene and omic with TPM: DataFrame gene, omic, reads, length, tpm
+    (IMP3 Stats/<omic>/gene_read_count.txt: contig, start, end, gene, ..., reads; TPM over all genes of the sample:
+    (reads / length) / sum(reads / length) * 1e6, as in Villette et al. 2025)"""
     out = []
     for o in omics:
         p = find(base, "Stats/%s/gene_read_count.txt" % o)
@@ -99,5 +101,10 @@ def gene_reads(base, omics=("mg", "mt")):
         if t.empty or t.shape[1] < 5:
             continue
         num = t.apply(lambda c: pd.to_numeric(c, errors="coerce"))
-        out.append(pd.DataFrame({"gene": t.iloc[:, 3], "omic": o, "reads": num.iloc[:, -1].fillna(0)}))
-    return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["gene", "omic", "reads"])
+        d = pd.DataFrame({"gene": t.iloc[:, 3], "omic": o, "reads": num.iloc[:, -1].fillna(0),
+                          "length": (num.iloc[:, 2] - num.iloc[:, 1]).clip(lower=1)})
+        rpk = d["reads"] / d["length"]
+        d["tpm"] = rpk / rpk.sum() * 1e6 if rpk.sum() > 0 else 0.0
+        out.append(d)
+    return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["gene", "omic", "reads", "length",
+                                                                               "tpm"])

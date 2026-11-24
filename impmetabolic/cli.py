@@ -75,8 +75,10 @@ def main(argv=None):
                    "MNXM ids; 'default' = minimal glucose medium; 'none' = no scope)")
     n.add_argument("--graphml", action="store_true", help="also write every network as GraphML (Cytoscape)")
     n.add_argument("--bin-hubs", action="store_true", help="hub metabolites also for every MAG network")
-    n.add_argument("--sets", default="specific,all", help="reaction sets analysed: specific (links with KEGG-reaction "
-                   "evidence or specific ECs) and / or all [specific,all]")
+    n.add_argument("--sets", default="specific,all,active", help="reaction sets analysed: specific (KEGG-reaction "
+                   "evidence or specific ECs), all, active (reaction groups expressed: metaT TPM >= --active-tpm; "
+                   "left out without metaT) [specific,all,active]")
+    n.add_argument("--active-tpm", type=float, default=1.0, help="metaT TPM of a reaction group to count as active [1]")
     n.add_argument("--threads", type=int, default=4)
     n.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     a = ap.parse_args(argv)
@@ -108,7 +110,7 @@ def main(argv=None):
         from .networks import SEEDS, run
         seeds = SEEDS if a.seeds == "default" else (None if a.seeds == "none" else a.seeds)
         run(a.mapping, a.refdb, a.out, tuple(x for x in a.ranks.split(",") if x), tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
-            a.threads, tuple(x for x in a.sets.split(",") if x))
+            a.threads, tuple(x for x in a.sets.split(",") if x), a.active_tpm)
         return 0
     return 1
 

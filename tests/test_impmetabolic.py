@@ -66,10 +66,17 @@ def test_map_and_networks(tmp_path):
     assert set(c1.index) == {"MNXR1", "MNXR2", "MNXR3", "MNXR4", "MNXR5", "MNXR7"}   # MNXR6 in the MNXR2 group
     assert c1.loc["MNXR2", "variants"] == "2" and (c1["confidence"] == "specific").all()
     r1 = com[(com["sample_id"] == "S1") & (com["mnx_id"] == "MNXR1")].iloc[0]
-    assert float(r1["mg_reads"]) == 10 and float(r1["mt_reads"]) == 30
+    assert float(r1["mg_reads"]) == 10 and float(r1["mt_reads"]) == 60
     br = read_table(mp_, "bin_reactions")
     assert set(br.loc[br["bin_id"] == "S1:bin.1", "mnx_id"]) == {"MNXR1", "MNXR2", "MNXR3"}
     assert set(br.loc[br["bin_id"] == "S1:bin.2", "mnx_id"]) == {"MNXR4", "MNXR5", "MNXR7"}
+    # TPM and relative expression (metaT TPM / metaG TPM): metaG reads 10, 20, ... per gene (length 300), metaT
+    # 3x with G1 doubled and G5 silent -> mta of MNXR1 (G1) = 2 x mta of MNXR2 (G2); MNXR5 not expressed
+    for c in ("mg_tpm", "mt_tpm", "mta"):
+        c1[c] = c1[c].astype(float)
+    assert abs(c1["mg_tpm"].sum() - 1e6 * (1 + 2 + 3 + 4 + 5 + 5) / 28) < 1    # G1-G5 of 7 genes; G5 in 2 groups
+    assert abs(c1.loc["MNXR1", "mta"] / c1.loc["MNXR2", "mta"] - 2) < 1e-6
+    assert c1.loc["MNXR5", "mt_tpm"] == 0 and c1.loc["MNXR5", "mta"] == 0
     st = read_table(mp_, "stats")
     assert int(st.loc[st["sample_id"] == "S1", "genes_with_reaction"].iloc[0]) == 5
     assert int(st.loc[st["sample_id"] == "S1", "reactions_ec_only"].iloc[0]) == 2          # MNXR6, MNXR7
@@ -92,8 +99,8 @@ def test_map_and_networks(tmp_path):
     nets = str(tmp_path / "nets")
     assert cli(["networks", "--mapping", mp_, "--refdb", refdb, "--out", nets, "--format", "tsv",
                 "--graphml", "--threads", "2"]) == 0
-    t = read_table(nets, "topology")
-    t = t[t["set"] == "all"]
+    t0 = read_table(nets, "topology")
+    t = t0[t0["set"] == "all"]
     lv = dict(zip(t["level"] + ">" + t["id"], t["reactions"]))
     assert lv["community>S1"] == "6" and lv["bin>S1:bin.1"] == "3"
     assert "bin>S1:bin.2" in lv                            # medium-quality MAG
@@ -107,6 +114,10 @@ def test_map_and_networks(tmp_path):
     s1 = set(sc.loc[(sc["set"] == "all") & (sc["level"] == "community") & (sc["id"] == "S1"), "metabolite"])
     assert {"MNXM100", "MNXM101", "MNXM102", "MNXM103", "MNXM104"} <= s1   # glucose -> triose phosphates
     assert "MNXM106" not in s1                              # no ethanol in the seeds
+    ta = t0[t0["set"] == "active"]
+    assert dict(zip(ta["level"] + ">" + ta["id"], ta["reactions"]))["community>S1"] == "4"   # without MNXR5, MNXR7
+    ks = read_table(nets, "keystones")
+    assert set(ks["set"]) == {"specific", "all", "active"} and {"mnx_id", "load", "mta", "keystone"} <= set(ks.columns)
     hb = read_table(nets, "hubs")
     assert "name" in hb.columns and set(hb.loc[hb["metabolite"] == "MNXM100@MNXD1", "name"]) <= {"D-glucose 6-phosphate"}
     cov = read_table(nets, "mag_coverage")

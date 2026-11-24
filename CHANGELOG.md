@@ -23,3 +23,6 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
   reactions); topology without currency metabolites (size, components, degree, clustering, path length, hub
   metabolites by betweenness), scope expansion from seed metabolites, share of the community's reactions in its
   MAGs; GraphML export. Analysed for the specific and for all reactions (`--sets`), in parallel (`--threads`).
+- **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
+  metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
+  reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.

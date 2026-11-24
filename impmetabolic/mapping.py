@@ -12,6 +12,10 @@ most --max-ec-reactions MetaNetX reactions; broad when only reached through ECs 
 variants of broad ECs such as 1.1.1.1 or 1.2.1.5). MetaNetX reactions that are the same conversion (same
 metabolites, other compartments / protons / coefficients) are collapsed into one reaction group (the smallest
 MNXR id) in the community and MAG tables; gene_reactions keeps the MetaNetX id and its group.
+
+Abundance and activity: reads per gene and their TPM (metaG: gene copy abundance, metaT: transcript abundance),
+summed per reaction group; relative expression mta = metaT TPM / metaG TPM (the MT/MG ratio of Roume et al. 2015
+and Villette et al. 2025, as a proxy of transcriptional activity normalised for gene copy number).
 """
 import concurrent.futures as cf
 import logging
@@ -84,6 +88,11 @@ def map_genes(genes, ref, methods=("ec", "rn"), partial_ec=False, max_ec=MAX_EC_
     return out[cols]
 
 
+def _sum(s):
+    """sum that stays NaN when there are no values (metaG-only runs: no metaT)"""
+    return s.sum(min_count=1)
+
+
 def map_sample(base, sample, ref, methods=("ec", "rn"), partial_ec=False, max_ec=MAX_EC_REACTIONS):
     """-> dict of tables: gene_reactions, community_reactions, bin_reactions, bins, stats"""
     g = imp3.genes(base)
@@ -95,12 +104,10 @@ def map_sample(base, sample, ref, methods=("ec", "rn"), partial_ec=False, max_ec
     gr["bin_id"] = [sample + ":" + b if isinstance(b, str) else "" for b in gr["bin"]]
     gr = gr.drop(columns=["bin"])
     reads = imp3.gene_reads(base)
-    if len(reads):
-        w = reads.pivot_table(index="gene", columns="omic", values="reads", aggfunc="sum")
+    for v in ("reads", "tpm"):
+        w = reads.pivot_table(index="gene", columns="omic", values=v, aggfunc="sum") if len(reads) else None
         for o in ("mg", "mt"):
-            gr[o + "_reads"] = gr["gene"].map(w[o]) if o in w.columns else float("nan")
-    else:
-        gr["mg_reads"] = gr["mt_reads"] = float("nan")
+            gr["%s_%s" % (o, v)] = gr["gene"].map(w[o]) if w is not None and o in w.columns else float("nan")
 
     def agg(df, keys):
         # one row per reaction group (mnx_id = the group id); reads of a gene count once per group;
@@ -108,10 +115,11 @@ def map_sample(base, sample, ref, methods=("ec", "rn"), partial_ec=False, max_ec
         d = df.assign(spec=df["confidence"] == "specific")
         per_gene = d.groupby(keys + ["group_id", "gene"], as_index=False).agg(
             spec=("spec", "any"), mg_reads=("mg_reads", "first"), mt_reads=("mt_reads", "first"),
-            variants=("mnx_id", "nunique"))
+            mg_tpm=("mg_tpm", "first"), mt_tpm=("mt_tpm", "first"), variants=("mnx_id", "nunique"))
         a = per_gene.groupby(keys + ["group_id"], as_index=False).agg(
-            n_genes=("gene", "nunique"), n_specific_genes=("spec", "sum"), mg_reads=("mg_reads", "sum"),
-            mt_reads=("mt_reads", "sum"))
+            n_genes=("gene", "nunique"), n_specific_genes=("spec", "sum"), mg_reads=("mg_reads", _sum),
+            mt_reads=("mt_reads", _sum), mg_tpm=("mg_tpm", _sum), mt_tpm=("mt_tpm", _sum))
+        a["mta"] = a["mt_tpm"] / a["mg_tpm"].where(a["mg_tpm"] > 0)
         a["confidence"] = (a["n_specific_genes"] > 0).map({True: "specific", False: "broad"})
         a["variants"] = a["group_id"].map(d.groupby("group_id")["mnx_id"].nunique())
         return a.rename(columns={"group_id": "mnx_id"})

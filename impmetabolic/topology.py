@@ -92,3 +92,24 @@ def scope(net, seeds, reversible=True, merge_compartments=True):
 def jaccard(a, b):
     a, b = set(a), set(b)
     return len(a & b) / len(a | b) if a | b else float("nan")
+
+
+def keystones(net, currency=(), activity=None, k=300, seed=1, load_q=0.95, mta_q=0.75):
+    """reactions with a high betweenness relative to their degree in the reaction graph ('load points', Rahman &
+    Schomburg 2006) and a high relative expression (metaT / metaG), the keystone criterion of Roume et al. 2015.
+    activity: Series mnx_id -> mta (optional). -> DataFrame mnx_id, degree, betweenness, load, mta, keystone"""
+    G = net.reaction_graph(currency)
+    G.remove_nodes_from([n for n, d in dict(G.degree()).items() if d == 0])
+    if G.number_of_nodes() < 3:
+        return pd.DataFrame(columns=["mnx_id", "degree", "betweenness", "load", "mta", "keystone"])
+    bc = nx.betweenness_centrality(G, k=min(k, G.number_of_nodes()), seed=seed)
+    df = pd.DataFrame({"mnx_id": list(bc), "betweenness": list(bc.values())})
+    df["degree"] = df["mnx_id"].map(dict(G.degree()))
+    df["load"] = df["betweenness"] / df["degree"]
+    df["mta"] = df["mnx_id"].map(activity) if activity is not None else float("nan")
+    high_load = df["load"] >= df["load"].quantile(load_q)
+    if df["mta"].notna().any():
+        df["keystone"] = high_load & (df["mta"] >= df["mta"].quantile(mta_q))
+    else:
+        df["keystone"] = high_load
+    return df.sort_values("load", ascending=False)[["mnx_id", "degree", "betweenness", "load", "mta", "keystone"]]

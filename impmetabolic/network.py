@@ -98,6 +98,21 @@ class MetabolicNetwork(nx.DiGraph):
                             G.add_edge(a, b, reactions={r})
         return G
 
+    def reaction_graph(self, currency=()):
+        """reaction projection: r1 - r2 when they share a metabolite that is a product of one and a substrate of the
+        other (or, as MetaNetX equations are undirected, on any side); currency metabolites left out"""
+        cur = set(currency)
+        G = nx.Graph()
+        G.add_nodes_from(self.reactions())
+        for m in self.metabolites():
+            if self.nodes[m]["metabolite"] in cur:
+                continue
+            rs = list(set(self.predecessors(m)) | set(self.successors(m)))
+            for i in range(len(rs)):
+                for j in range(i + 1, len(rs)):
+                    G.add_edge(rs[i], rs[j])
+        return G
+
     def to_graphml(self, path):
         H = nx.DiGraph()
         for n, d in self.nodes(data=True):

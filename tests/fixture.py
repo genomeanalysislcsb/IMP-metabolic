@@ -77,9 +77,11 @@ def sample(root, sid, with_bin2=True):
       "g__Bacteroides;s__Bacteroides uniformis\n" +
       ("bin.2 \t60.0 \t2.0 \td__Bacteria;p__Bacillota_A;c__Clostridia;o__Lachnospirales;f__Lachnospiraceae;"
        "g__Blautia_A;s__\n" if with_bin2 else ""))
-    for o, f in (("mg", 1), ("mt", 3)):
+    for o, f in (("mg", 1), ("mt", 3)):          # metaT: G1 6x its metaG share, G5 (alcohol dehydrogenase) silent
         w(os.path.join(b, "Stats", o, "gene_read_count.txt"), "".join(
-            "%s\t%d\t%d\t%s_%s\t%d\n" % (c, 10 * i, 10 * i + 300, sid, g, (i + 1) * 10 * f)
+            "%s\t%d\t%d\t%s_%s\t%d\n" % (c, 10 * i, 10 * i + 300, sid, g,
+                                         0 if (o == "mt" and g == "G5") else
+                                         (i + 1) * 10 * f * (2 if (o == "mt" and g == "G1") else 1))
             for i, (g, c, a) in enumerate(GENES)))
     w(os.path.join(b, "Stats", "mg", "mg.read_stats.tsv"), "x\n")
     return b

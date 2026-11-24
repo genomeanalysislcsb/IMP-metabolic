@@ -63,6 +63,14 @@ the point, and every network is analysed for the specific and for all reactions.
 same conversion (same metabolites in another compartment, with other protons or coefficients) are counted as one
 reaction group.
 
+**Abundance and activity.** Reads per gene (metaG and metaT) are turned into TPM within each sample and summed
+per reaction group; the relative expression `mta` = metaT TPM / metaG TPM is the MT/MG ratio of Roume et al.
+(2015, npj Biofilms Microbiomes 1:15007) and Villette et al. (2025, npj Biofilms Microbiomes 11:142), a proxy of
+transcriptional activity normalised for gene copy number. With metaT, the reaction set *active* (reaction groups
+with metaT TPM ≥ `--active-tpm`) is analysed next to *specific* and *all*, and every community network gets the
+keystone criterion of Roume et al.: reactions with a high betweenness relative to their degree in the reaction
+graph (load points) and a high relative expression.
+
 Contig → MAG from `Binning/MetaWrap/bins.contigs`, MAG quality and GTDB taxonomy from `Stats/all_bin_stats.tsv`,
 reads per gene (metaG, metaT) from `Stats/<omic>/gene_read_count.txt`.
 
@@ -76,10 +84,11 @@ thermodynamics are added; the scope treats reactions as reversible by default. F
 | directory / table | content |
 |---|---|
 | `mapping/samples/<id>/gene_reactions` | gene, contig, bin, MetaNetX reaction and its group, evidence, via (EC / KEGG reaction), confidence, metaG and metaT reads |
-| `mapping/community_reactions` | sample × reaction group: genes (all / specific), confidence, MetaNetX variants, metaG and metaT reads |
+| `mapping/community_reactions` | sample × reaction group: genes (all / specific), confidence, MetaNetX variants, metaG and metaT reads and TPM, relative expression (mta) |
 | `mapping/bin_reactions` | sample × MAG × reaction: the same per MAG |
 | `mapping/bins`, `mapping/stats` | MAG quality and taxonomy; genes mapped per evidence path |
 | `networks/topology` | one row per reaction set (specific / all) and network (community, MAG, pan-reactome): reactions, metabolites, components, share in the largest component, mean degree, clustering, mean path length, scope size |
+| `networks/keystones` | per community network and set: reactions with degree, betweenness, load (betweenness / degree), relative expression and the keystone flag (load ≥ 95th and mta ≥ 75th percentile) |
 | `networks/hubs` | metabolites with the highest betweenness per community / pan-reactome network |
 | `networks/pan_reactome`, `pan_summary` | taxon × reaction: MAGs carrying it, share, core / accessory / rare; per taxon pan, core and accessory sizes |
 | `networks/scope` | metabolites reachable from the seeds (default: minimal glucose medium, `impmetabolic/data/seeds_minimal.tsv`) |
