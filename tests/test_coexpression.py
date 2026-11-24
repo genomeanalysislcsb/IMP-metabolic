@@ -99,3 +99,17 @@ def test_kme_reassignment(tmp_path):
     ma, mb = (x["modules"].set_index("mnx_id")["module"] for x in (a, b))
     assert (mb[planted] != "M0").sum() >= (ma[planted] != "M0").sum()
     assert (mb[["MNXR%03d" % j for j in range(90, 140)]] == "M0").mean() > 0.8
+
+
+def test_adjust_block(tmp_path):
+    """a site shift on all reaction groups forms no module after --adjust site"""
+    d, meta = cohort(tmp_path)
+    meta["site"] = np.where(np.arange(len(meta)) < 20, "A", "B")
+    com = read_table(d, "community_reactions")
+    shift = com["sample_id"].map(dict(zip(meta["sample_id"], np.where(meta["site"] == "A", 8.0, 1.0))))
+    com["mt_tpm"] = com["mt_tpm"].astype(float) * shift
+    write_table(com, d, "community_reactions", "tsv")
+    tabs = cx.run(d, str(tmp_path / "adj"), metadata=meta, trait_cols=["site"], adjust="site", min_module_size=10,
+                  fmt="tsv")
+    tr = tabs["module_traits"]
+    assert not (tr[(tr["test"] == "mann-whitney")]["p"] < 0.01).any()

@@ -21,7 +21,9 @@ values of the module's members, as in the paper); module-trait association with 
 biserial correlation per level and Kruskal-Wallis; numeric: Spearman), over all samples and, with --block, within
 each block level (groups confounded with sites), BH-FDR over all modules, traits and blocks. After the tree cut,
 reaction groups are (re)assigned by module membership as in WGCNA's blockwiseModules: unassigned ones join the
-module with the highest kME >= --reassign-kme (0.5), members with kME < 0.3 are dropped.
+module with the highest kME >= --reassign-kme (0.5), members with kME < 0.3 are dropped. --adjust site centres
+each transformed reaction group within each site before the correlations, so that site differences do not form
+modules of their own.
 """
 import logging
 import os
@@ -362,7 +364,7 @@ def traits(ME, meta, columns, block=None):
 def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=None, how="yeo-johnson",
         method="pearson", power=None, r2=0.8, min_module_size=20, merge_diss=0.18, metadata=None,
         trait_cols=(), fmt="auto", tree_cut="dynamic", deep_split=2, block=None, reassign_kme=0.5,
-        min_kme_to_stay=0.3):
+        min_kme_to_stay=0.3, adjust=None):
     com = read_table(mapping, "community_reactions")
     mg, mt = matrices(com, confidence)
     X, value, pc, prev = values(mg, mt, value, min_prev, pseudocount)
@@ -371,6 +373,10 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
     log.info("value %s%s; %d samples, %d reaction groups present in >= %.0f %% of them, %d distinct profiles", value,
              " (pseudocount %.3g TPM)" % pc if value == "mta" else "", X.shape[0], n0, 100 * min_prev, X.shape[1])
     Xt = transform(X, how)
+    if adjust is not None and metadata is not None and adjust in metadata.columns:
+        b = metadata.set_index(metadata["sample_id"].astype(str))[adjust].reindex(Xt.index).astype(str)
+        Xt = Xt - Xt.groupby(b.values).transform("mean")       # within-block centring (present values only)
+        log.info("%s removed: each reaction group centred within each %s level", adjust, adjust)
     C = correlation(Xt, method, min_periods=max(5, int(0.5 * min_prev * len(Xt))))
     fit = scale_free_fit(C)
     if power is None:
@@ -433,5 +439,6 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
                                                "pseudocount": pc, "transform": how, "correlation": method,
                                                "power": power, "min_module_size": min_module_size,
                                                "merge_diss": merge_diss, "tree_cut": how_cut,
-                                               "reassign_kme": reassign_kme, "min_kme_to_stay": min_kme_to_stay})
+                                               "reassign_kme": reassign_kme, "min_kme_to_stay": min_kme_to_stay,
+                                               "adjust": adjust or ""})
     return tabs

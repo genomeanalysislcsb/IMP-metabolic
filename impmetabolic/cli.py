@@ -117,6 +117,8 @@ def main(argv=None):
     c.add_argument("--metadata", help="TSV/CSV with sample_id and trait columns (ids as in the mapping)")
     c.add_argument("--block", help="metadata column to test the traits within as well (e.g. site, when groups and "
                    "sites are confounded)")
+    c.add_argument("--adjust", help="metadata column whose effect is removed before the network (each reaction group "
+                   "centred within each level), e.g. site")
     c.add_argument("--traits", default="", help="metadata columns to associate with the modules (comma-separated)")
     c.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
     a = ap.parse_args(argv)
@@ -164,7 +166,7 @@ def main(argv=None):
                 meta = meta.rename(columns={meta.columns[0]: "sample_id"})
         coex(a.mapping, a.out, a.value, a.reactions, a.min_prevalence, a.pseudocount, a.transform, a.correlation,
              a.power, a.r2, a.min_module_size, a.merge_diss, meta, [x for x in a.traits.split(",") if x], a.format,
-             a.tree_cut, a.deep_split, a.block, a.reassign_kme)
+             a.tree_cut, a.deep_split, a.block, a.reassign_kme, adjust=a.adjust)
         return 0
     return 1
 
