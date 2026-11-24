@@ -10,7 +10,8 @@ METS = [("MNXM1", "H(+)"), ("WATER", "H2O"), ("MNXM3", "ATP"), ("MNXM7", "ADP"),
         ("MNXM10", "NADH"), ("MNXM99", "D-glucose"), ("MNXM100", "D-glucose 6-phosphate"),
         ("MNXM101", "D-fructose 6-phosphate"), ("MNXM102", "D-fructose 1,6-bisphosphate"),
         ("MNXM103", "dihydroxyacetone phosphate"), ("MNXM104", "D-glyceraldehyde 3-phosphate"),
-        ("MNXM105", "ethanol"), ("MNXM106", "acetaldehyde"), ("MNXM107", "1-propanol"), ("MNXM108", "propanal")]
+        ("MNXM105", "ethanol"), ("MNXM106", "acetaldehyde"), ("MNXM107", "1-propanol"), ("MNXM108", "propanal"),
+        ("MNXM727276", "CoA")]
 # MetaNetX reactions without KEGG cross-reference: MNXR6 is MNXR2 in another compartment (one reaction group),
 # MNXR7 a second substrate of EC 1.1.1.1 (reached only through the EC)
 EXTRA = [("MNXR6", "1 MNXM100@MNXD2 = 1 MNXM101@MNXD2", "5.3.1.9"),

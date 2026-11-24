@@ -31,7 +31,7 @@ def test_refdb_build(tmp_path):
                                                                            "R00754"}
     assert {"ko_ec", "rn_ec", "ko_rn"} <= set(read_manifest(refdb)["tables"])
     cur = set(read_table(refdb, "currency")["name"])
-    assert {"ATP", "H(+)", "H2O", "NAD(+)"} <= cur and "D-glucose" not in cur
+    assert {"ATP", "H(+)", "H2O", "NAD(+)", "CoA"} <= cur and "D-glucose" not in cur     # names case-insensitive
     assert read_manifest(refdb)["metanetx_version"] == "4.4"
     from impmetabolic.refdb.build import metanetx_version
     assert metanetx_version(["MetaNetX/MNXref reconciliation", "MNXref Version 2025/03/03"]) == "2025/03/03"

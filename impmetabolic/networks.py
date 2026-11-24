@@ -73,10 +73,25 @@ def analyse(job):
 
 
 def run(mapping, refdb, out, rank=("species", "genus", "family"), tiers=("high", "medium"), seeds=SEEDS, graphml=False, fmt="auto",
-        bin_hubs=False, threads=4, sets=("specific", "all", "active"), active_tpm=1.0):
+        bin_hubs=False, threads=4, sets=("specific", "all", "active"), active_tpm=1.0, extra_currency=(),
+        keep_currency=()):
     reactions = read_table(refdb, "reactions", columns=["mnx_id", "equation"])
-    currency = set(read_table(refdb, "currency", required=False).get("mnx_id", pd.Series(dtype=str)))
     mets = read_table(refdb, "metabolites", columns=["mnx_id", "name"], required=False)
+    # currency metabolites: the refdb list and the current name list (older refdb builds matched fewer names),
+    # plus --currency (MetaNetX names or MNXM ids, one per line); --keep-currency removes names from the list
+    from .refdb.build import CURRENCY_NAMES, currency as currency_of
+    names = set(CURRENCY_NAMES) | set(extra_currency or ())
+    names -= set(keep_currency or ())
+    cur = currency_of(mets, tuple(names)) if len(mets) else pd.DataFrame(columns=["mnx_id", "name"])
+    if keep_currency:
+        old = read_table(refdb, "currency", required=False)
+        old = old[~old.get("name", pd.Series(dtype=str)).str.lower().isin({k.lower() for k in keep_currency})] \
+            if len(old) else old
+    else:
+        old = read_table(refdb, "currency", required=False)
+    currency = set(cur["mnx_id"]) | set(old.get("mnx_id", pd.Series(dtype=str)))
+    log.info("%d currency metabolites (left out of the topology): %s", len(currency),
+             ", ".join(sorted(set(cur["name"]))[:40]))
     seed_ids = resolve_seeds(seeds, mets, currency) if seeds else set()
     com = read_table(mapping, "community_reactions")
     br = read_table(mapping, "bin_reactions")
@@ -157,5 +172,6 @@ def run(mapping, refdb, out, rank=("species", "genus", "family"), tiers=("high",
     write_manifest(out, "networks", rows, {"mapping": os.path.abspath(mapping), "refdb": os.path.abspath(refdb),
                                            "ranks": list(ranks), "tiers": list(tiers), "seeds": seeds or "",
                                            "sets": list(sets), "active_tpm": active_tpm,
+                                           "currency_names": sorted(set(cur["name"])),
                                            "currency": sorted(currency)})
     return tabs

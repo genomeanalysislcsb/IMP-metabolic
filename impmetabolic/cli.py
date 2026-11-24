@@ -80,6 +80,9 @@ def main(argv=None):
     n.add_argument("--sets", default="specific,all,active", help="reaction sets analysed: specific (KEGG-reaction "
                    "evidence or specific ECs), all, active (reaction groups expressed: metaT TPM >= --active-tpm; "
                    "left out without metaT) [specific,all,active]")
+    n.add_argument("--currency", help="file of further currency metabolites (MetaNetX names or MNXM ids, one per line)")
+    n.add_argument("--keep-currency", default="", help="names to take out of the currency list (comma-separated), "
+                   "e.g. 'S-adenosyl-L-methionine,S-adenosyl-L-homocysteine'")
     n.add_argument("--active-tpm", type=float, default=1.0, help="metaT TPM of a reaction group to count as active [1]")
     n.add_argument("--threads", type=int, default=4)
     n.add_argument("--format", choices=("auto", "parquet", "tsv"), default="auto")
@@ -132,7 +135,9 @@ def main(argv=None):
         from .networks import SEEDS, run
         seeds = SEEDS if a.seeds == "default" else (None if a.seeds == "none" else a.seeds)
         run(a.mapping, a.refdb, a.out, tuple(x for x in a.ranks.split(",") if x), tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
-            a.threads, tuple(x for x in a.sets.split(",") if x), a.active_tpm)
+            a.threads, tuple(x for x in a.sets.split(",") if x), a.active_tpm,
+            [ln.strip() for ln in open(a.currency) if ln.strip() and not ln.startswith("#")] if a.currency else (),
+            [x.strip() for x in a.keep_currency.split(",") if x.strip()])
         return 0
     if a.cmd == "coexpression":
         import pandas as pd

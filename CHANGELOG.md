@@ -26,6 +26,10 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- **Currency metabolites** matched case-insensitively and extended (CoA, which MetaNetX 4.4 calls "CoA"; SAM / SAH;
+  nucleoside mono-/diphosphates; quinones, ferredoxin, thioredoxin, glutathione; metal ions); `networks` applies the
+  current list also to older refdb builds and takes `--currency FILE` / `--keep-currency NAMES`; the names used
+  are logged and stored in the manifest.
 - **Co-expression** (`imp-metabolic coexpression`): WGCNA of reaction groups across a cohort in Python, after
   Villette et al. 2025: metaT / metaG ratio by default, metaT or metaG alone when only one omic is available;
   prevalence filter with absent values kept missing, one pseudocount, Yeo-Johnson transform, signed adjacency with

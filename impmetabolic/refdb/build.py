@@ -20,10 +20,16 @@ from .catalogue import DATA_CATALOGUE, OPTIONAL_LOADERS
 
 log = logging.getLogger(__name__)
 
-# MetaNetX names of currency metabolites (removed from the metabolite graph before topology, kept in the network)
-CURRENCY_NAMES = ("H2O", "H(+)", "ATP", "ADP", "AMP", "GTP", "GDP", "UTP", "UDP", "CTP", "CDP", "NAD(+)", "NADH",
-                  "NADP(+)", "NADPH", "FAD", "FADH2", "phosphate", "diphosphate", "CO2", "O2", "NH4(+)",
-                  "hydrogencarbonate", "hydrogen peroxide", "coenzyme A", "H2", "Na(+)", "K(+)", "Fe(2+)", "Fe(3+)")
+# MetaNetX names of currency metabolites (removed from the metabolite graph before topology, kept in the network):
+# cofactors and carriers that link otherwise unrelated reactions (Ma & Zeng 2003; Huss & Holme 2007), matched
+# case-insensitively, as MetaNetX names change between versions (coenzyme A is 'CoA' in MetaNetX 4.4, MNXM727276)
+CURRENCY_NAMES = ("H2O", "H(+)", "ATP", "ADP", "AMP", "GTP", "GDP", "GMP", "UTP", "UDP", "UMP", "CTP", "CDP", "CMP",
+                  "ITP", "IDP", "dATP", "dADP", "NAD(+)", "NADH", "NADP(+)", "NADPH", "FAD", "FADH2", "FMN", "FMNH2",
+                  "phosphate", "hydrogenphosphate", "diphosphate", "CO2", "O2", "NH4(+)", "ammonia", "hydrogencarbonate",
+                  "hydrogen peroxide", "CoA", "coenzyme A", "S-adenosyl-L-methionine", "S-adenosyl-L-homocysteine",
+                  "H2", "Na(+)", "K(+)", "Fe(2+)", "Fe(3+)", "Mg(2+)", "Zn(2+)", "Mn(2+)", "Cl(-)",
+                  "ubiquinone-8", "ubiquinol-8", "menaquinone-8", "menaquinol-8", "oxidized ferredoxin",
+                  "reduced ferredoxin", "thioredoxin", "thioredoxin disulfide", "glutathione", "glutathione disulfide")
 CURRENCY_IDS = ("WATER",)
 
 XREF_SPECS = {
@@ -107,6 +113,14 @@ def explode(df, col, new, sep):
     return x[x[new].fillna("") != ""]
 
 
+def currency(metabolites, names=CURRENCY_NAMES, ids=CURRENCY_IDS):
+    """mnx_id, name of the currency metabolites: names matched case-insensitively, plus fixed ids"""
+    want = {n.lower() for n in names}
+    m = metabolites[["mnx_id", "name"]].fillna("")
+    cur = m[m["name"].str.lower().isin(want) | m["mnx_id"].isin(ids) | m["mnx_id"].isin(names)]
+    return cur.drop_duplicates().reset_index(drop=True)
+
+
 def derived(t):
     out = {}
     for key, (srcs, main, valid) in XREF_SPECS.items():
@@ -128,9 +142,7 @@ def derived(t):
         m = t["metanetx_chem_prop"]
         out["metabolites"] = m[[c for c in ("mnx_id", "name", "reference", "formula", "charge", "mass", "inchikey",
                                            "smiles") if c in m.columns]].reset_index(drop=True)
-        cur = out["metabolites"][out["metabolites"]["name"].isin(CURRENCY_NAMES) |
-                                 out["metabolites"]["mnx_id"].isin(CURRENCY_IDS)][["mnx_id", "name"]]
-        out["currency"] = cur.drop_duplicates().reset_index(drop=True)
+        out["currency"] = currency(out["metabolites"])
     for key, a, b in (("kegg_link_orthology_enzyme", "ko", "ec"), ("kegg_link_reaction_enzyme", "rn", "ec"),
                       ("kegg_link_orthology_reaction", "ko", "rn")):
         if key in t and {a, b} <= set(t[key].columns):
