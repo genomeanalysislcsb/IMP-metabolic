@@ -25,6 +25,9 @@ def cohort(tmp, n=40, with_mt=True, with_mg=True, seed=3):
         mg = rng.lognormal(3, 0.3, size=n)
         mt = mg * np.exp(act)                                        # relative expression carries the signal
         for i, s in enumerate(samples):
+            if j < 5:                                                # substrate variants: same genes as MNXR000
+                rows.append({"sample_id": s, "mnx_id": "MNXV%03d" % j, "confidence": "broad",
+                             "mg_tpm": mg[i] if with_mg else np.nan, "mt_tpm": mt[i] if with_mt else np.nan})
             if j >= 140 and i % 3:                                   # rare reaction groups: filtered out
                 continue
             rows.append({"sample_id": s, "mnx_id": "MNXR%03d" % j, "confidence": "specific",
@@ -39,7 +42,9 @@ def test_values_auto(tmp_path):
         d, _ = cohort(tmp_path / want, with_mg=mg, with_mt=mt)
         g, t = cx.matrices(read_table(d, "community_reactions"))
         X, v, pc, prev = cx.values(g, t, "auto")
-        assert v == want and X.shape[1] == 140                       # 10 rare groups below 50 % prevalence
+        assert v == want and X.shape[1] == 145                       # 10 rare groups below 50 % prevalence
+        Xc, mem = cx.collapse_duplicates(X)
+        assert Xc.shape[1] == 140 and mem["MNXR000"] == "MNXR000 MNXV000"
 
 
 def test_planted_modules(tmp_path):
@@ -57,3 +62,5 @@ def test_planted_modules(tmp_path):
     assert set(sig) == {mods[0]}                                     # only module A differs between the groups
     assert tabs["modules"]["intramodular_hub"].sum() >= 9
     assert set(read_table(str(tmp_path / "coex"), "module_summary")["module"]) == set(mods)
+    assert not tabs["modules"]["mnx_id"].str.startswith("MNXV").any()             # collapsed into MNXR0xx
+    assert (tabs["modules"].set_index("mnx_id").loc["MNXR001", "n_same_profile"]) == 2

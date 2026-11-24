@@ -7,7 +7,8 @@ Value per sample and reaction group (--value):
   mta, mt, mg  one of them explicitly
 
 Steps: reaction groups present in >= --min-prevalence of the samples (present = metaG TPM > 0 for mta / mg, metaT
-TPM > 0 for mt); values of absent samples are missing, not 0; ratio with a pseudocount (--pseudocount, default half
+TPM > 0 for mt); values of absent samples are missing, not 0; reaction groups with identical profiles (the same
+genes, e.g. substrate variants of one EC) are collapsed into one feature (listed in same_profile); ratio with a pseudocount (--pseudocount, default half
 the smallest positive TPM); Yeo-Johnson power transform per reaction group (as sklearn's PowerTransformer in the
 paper; --transform log2 / none); correlations from the pairs of samples where both are present; signed adjacency
 ((1 + r) / 2) ** power with the power chosen by the scale-free topology fit (lowest power with R2 >= --r2, or
@@ -79,6 +80,21 @@ def values(mg, mt, value="auto", min_prev=0.5, pseudocount=None):
         X = base[keep].astype(float)
     X = X.where(present[keep])
     return X, value, pseudocount, prev[keep]
+
+
+def collapse_duplicates(X):
+    """reaction groups with identical profiles (the same genes: substrate variants of one EC, subunits) are one
+    feature: they would otherwise form modules of their own and inflate the connectivity. -> (X with one
+    representative per profile, Series representative -> members separated by spaces)"""
+    key = X.round(6).fillna(-1.0).T.apply(lambda r: hash(tuple(r.values)), axis=1)
+    groups = pd.Series(X.columns, index=X.columns).groupby(key.values)
+    rep, members = [], {}
+    for _, cols in groups:
+        cols = sorted(cols)
+        rep.append(cols[0])
+        members[cols[0]] = " ".join(cols)
+    rep = [c for c in X.columns if c in set(rep)]
+    return X[rep], pd.Series(members)
 
 
 def transform(X, how="yeo-johnson"):
@@ -246,8 +262,10 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
     com = read_table(mapping, "community_reactions")
     mg, mt = matrices(com, confidence)
     X, value, pc, prev = values(mg, mt, value, min_prev, pseudocount)
-    log.info("value %s%s; %d samples, %d reaction groups present in >= %.0f %% of them", value,
-             " (pseudocount %.3g TPM)" % pc if value == "mta" else "", X.shape[0], X.shape[1], 100 * min_prev)
+    n0 = X.shape[1]
+    X, members = collapse_duplicates(X)
+    log.info("value %s%s; %d samples, %d reaction groups present in >= %.0f %% of them, %d distinct profiles", value,
+             " (pseudocount %.3g TPM)" % pc if value == "mta" else "", X.shape[0], n0, 100 * min_prev, X.shape[1])
     Xt = transform(X, how)
     C = correlation(Xt, method, min_periods=max(5, int(0.5 * min_prev * len(Xt))))
     fit = scale_free_fit(C)
@@ -274,6 +292,8 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
     mods = pd.DataFrame({"mnx_id": Xt.columns, "module": ["M%d" % m for m in labels], "kME": kME,
                          "kWithin": kWithin, "kTotal": kTotal, "prevalence": prev.reindex(Xt.columns).values,
                          "mean_value": X[Xt.columns].mean().values})
+    mods["same_profile"] = mods["mnx_id"].map(members).fillna(mods["mnx_id"])
+    mods["n_same_profile"] = mods["same_profile"].str.count(" ") + 1
     asg = mods["module"] != "M0"
     mods["hub"] = asg & (mods["kTotal"] >= mods.loc[asg, "kTotal"].quantile(0.95))
     mods["intramodular_hub"] = asg & (mods["kWithin"] >= mods.groupby("module")["kWithin"].transform(

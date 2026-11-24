@@ -26,6 +26,9 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- coexpression: reaction groups with identical profiles (same genes: substrate variants of one EC, subunits) are one
+  feature (`same_profile`, `n_same_profile` in `modules`); networks: `keystones` keeps the keystones and the top
+  10 % load per community (5.5 M rows for Expobiome before).
 - **Currency metabolites by role** (`--currency-mode pairs`, default): cofactor pairs (curated + frequent in the
   reference reactions, `--pair-min-reactions`) and carriers / inorganic molecules are left out of a reaction only
   where it uses them; their own synthesis and degradation stay in the metabolite and reaction graphs and the scope;

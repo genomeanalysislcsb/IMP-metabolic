@@ -66,6 +66,7 @@ def analyse(job):
     ks = None
     if level == "community":
         ks = topology.keystones(net, _W["currency"], pd.Series(mta) if mta else None)
+        ks = ks[ks["keystone"] | (ks["load"] >= ks["load"].quantile(0.9))]   # keystones + top 10 % load only
         ks.insert(0, "id", nid)
         ks.insert(0, "set", rset)
         s["keystones"] = int(ks["keystone"].sum())
