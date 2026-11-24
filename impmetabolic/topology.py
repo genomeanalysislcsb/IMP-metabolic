@@ -46,7 +46,7 @@ def hubs(net, currency=(), top=20, k=200, seed=1):
     return df.sort_values("betweenness", ascending=False).head(top)[["metabolite", "degree", "betweenness"]]
 
 
-def scope(net, seeds, reversible=True, merge_compartments=True):
+def scope(net, seeds, reversible=True, merge_compartments=True, currency=()):
     """network expansion: a reaction fires when all its substrates are in the scope (with reversible=True also
     from right to left); its products join the scope. -> (scope metabolites, fired reactions).
     Linear in the size of the network: each (reaction, direction) counts its substrates not yet reached."""
@@ -56,8 +56,11 @@ def scope(net, seeds, reversible=True, merge_compartments=True):
         return net.nodes[m]["metabolite"] if merge_compartments else m
     sides, missing, waiting = [], [], defaultdict(list)
     for r in net.reactions():
-        s = {key(m) for m in net.predecessors(r)}
-        p = {key(m) for m in net.successors(r)}
+        if currency:                     # cofactors used (not converted) by the reaction are not required
+            s, p = (set(x) for x in net.main_sides(r, currency, merge_compartments))
+        else:
+            s = {key(m) for m in net.predecessors(r)}
+            p = {key(m) for m in net.successors(r)}
         for a, b in ((s, p), (p, s)) if reversible else ((s, p),):
             i = len(sides)
             sides.append((r, b))

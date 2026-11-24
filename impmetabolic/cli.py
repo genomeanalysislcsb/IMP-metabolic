@@ -80,7 +80,14 @@ def main(argv=None):
     n.add_argument("--sets", default="specific,all,active", help="reaction sets analysed: specific (KEGG-reaction "
                    "evidence or specific ECs), all, active (reaction groups expressed: metaT TPM >= --active-tpm; "
                    "left out without metaT) [specific,all,active]")
-    n.add_argument("--currency", help="file of further currency metabolites (MetaNetX names or MNXM ids, one per line)")
+    n.add_argument("--currency-mode", choices=("pairs", "global"), default="pairs", help="pairs: cofactors are "
+                   "currency only where a reaction uses them (cofactor pairs, carriers), not in their own synthesis "
+                   "or degradation; global: a fixed list removed everywhere [pairs]")
+    n.add_argument("--pair-min-reactions", type=int, default=100, help="metabolite pairs on opposite sides of at least "
+                   "this many reference reactions are cofactor pairs, next to the curated ones [100]")
+    n.add_argument("--currency-pairs", help="file of further cofactor pairs: two MetaNetX names or MNXM ids per line, "
+                   "tab-separated")
+    n.add_argument("--currency", help="file of further single currency metabolites (MetaNetX names or MNXM ids)")
     n.add_argument("--keep-currency", default="", help="names to take out of the currency list (comma-separated), "
                    "e.g. 'S-adenosyl-L-methionine,S-adenosyl-L-homocysteine'")
     n.add_argument("--active-tpm", type=float, default=1.0, help="metaT TPM of a reaction group to count as active [1]")
@@ -137,7 +144,9 @@ def main(argv=None):
         run(a.mapping, a.refdb, a.out, tuple(x for x in a.ranks.split(",") if x), tuple(a.quality.split(",")), seeds, a.graphml, a.format, a.bin_hubs,
             a.threads, tuple(x for x in a.sets.split(",") if x), a.active_tpm,
             [ln.strip() for ln in open(a.currency) if ln.strip() and not ln.startswith("#")] if a.currency else (),
-            [x.strip() for x in a.keep_currency.split(",") if x.strip()])
+            [x.strip() for x in a.keep_currency.split(",") if x.strip()], a.currency_mode, a.pair_min_reactions,
+            [tuple(ln.rstrip("\n").split("\t")[:2]) for ln in open(a.currency_pairs)
+             if ln.strip() and not ln.startswith("#") and "\t" in ln] if a.currency_pairs else ())
         return 0
     if a.cmd == "coexpression":
         import pandas as pd

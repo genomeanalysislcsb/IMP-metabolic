@@ -48,7 +48,7 @@ def analyse(job):
     s.update(level=level, id=nid, sample_id=sample, set=rset)
     sc_tab = None
     if _W["seeds"]:
-        sc, fired = topology.scope(net, _W["seeds"])
+        sc, fired = topology.scope(net, _W["seeds"], currency=_W["currency"])
         s["scope_metabolites"] = len(sc - _W["seeds"])
         s["scope_reactions"] = len(fired)
         s["scope_reaction_share"] = len(fired) / max(1, len(net.reactions()))
@@ -74,25 +74,23 @@ def analyse(job):
 
 def run(mapping, refdb, out, rank=("species", "genus", "family"), tiers=("high", "medium"), seeds=SEEDS, graphml=False, fmt="auto",
         bin_hubs=False, threads=4, sets=("specific", "all", "active"), active_tpm=1.0, extra_currency=(),
-        keep_currency=()):
+        keep_currency=(), currency_mode="pairs", pair_min_reactions=100, extra_pairs=()):
     reactions = read_table(refdb, "reactions", columns=["mnx_id", "equation"])
     mets = read_table(refdb, "metabolites", columns=["mnx_id", "name"], required=False)
-    # currency metabolites: the refdb list and the current name list (older refdb builds matched fewer names),
-    # plus --currency (MetaNetX names or MNXM ids, one per line); --keep-currency removes names from the list
-    from .refdb.build import CURRENCY_NAMES, currency as currency_of
-    names = set(CURRENCY_NAMES) | set(extra_currency or ())
-    names -= set(keep_currency or ())
-    cur = currency_of(mets, tuple(names)) if len(mets) else pd.DataFrame(columns=["mnx_id", "name"])
-    if keep_currency:
-        old = read_table(refdb, "currency", required=False)
-        old = old[~old.get("name", pd.Series(dtype=str)).str.lower().isin({k.lower() for k in keep_currency})] \
-            if len(old) else old
+    # currency metabolites by their role per reaction (currency.py); mode 'global' = the old fixed list everywhere
+    from . import currency as cx
+    if currency_mode == "global":
+        from .refdb.build import CURRENCY_NAMES
+        cur, cur_tab = cx.build(mets, None, "global", extra_singles=tuple(CURRENCY_NAMES) + tuple(extra_currency or ()),
+                                keep=keep_currency or ())
     else:
-        old = read_table(refdb, "currency", required=False)
-    currency = set(cur["mnx_id"]) | set(old.get("mnx_id", pd.Series(dtype=str)))
-    log.info("%d currency metabolites (left out of the topology): %s", len(currency),
-             ", ".join(sorted(set(cur["name"]))[:40]))
-    seed_ids = resolve_seeds(seeds, mets, currency) if seeds else set()
+        cur, cur_tab = cx.build(mets, reactions, "pairs", pair_min_reactions, extra_currency or (),
+                                extra_pairs or (), keep_currency or ())
+    log.info("currency (%s): %d single metabolites, %d cofactor pairs (%d curated, %d frequent in the reference "
+             "reactions)", currency_mode, len(cur.singles), len(cur.pairs), int((cur_tab["source"] == "curated").sum()),
+             int((cur_tab["source"] != "curated").sum()))
+    currency = cur
+    seed_ids = resolve_seeds(seeds, mets, cur.singles) if seeds else set()
     com = read_table(mapping, "community_reactions")
     br = read_table(mapping, "bin_reactions")
     bins = read_table(mapping, "bins")
@@ -162,7 +160,8 @@ def run(mapping, refdb, out, rank=("species", "genus", "family"), tiers=("high",
     tabs = {"topology": pd.DataFrame(topo), "hubs": hubs, "pan_reactome": pd.concat(pans, ignore_index=True),
             "pan_summary": pd.concat(pan_sums, ignore_index=True), "mag_coverage": pd.concat(cov, ignore_index=True),
             "scope": pd.concat(scopes, ignore_index=True) if scopes else pd.DataFrame(),
-            "keystones": pd.concat(kst, ignore_index=True) if kst else pd.DataFrame()}
+            "keystones": pd.concat(kst, ignore_index=True) if kst else pd.DataFrame(),
+            "currency": cur_tab}
     first = ["set", "level", "id", "sample_id"]
     tabs["topology"] = tabs["topology"][first + [c for c in tabs["topology"].columns if c not in first]]
     rows = {}
@@ -172,6 +171,6 @@ def run(mapping, refdb, out, rank=("species", "genus", "family"), tiers=("high",
     write_manifest(out, "networks", rows, {"mapping": os.path.abspath(mapping), "refdb": os.path.abspath(refdb),
                                            "ranks": list(ranks), "tiers": list(tiers), "seeds": seeds or "",
                                            "sets": list(sets), "active_tpm": active_tpm,
-                                           "currency_names": sorted(set(cur["name"])),
-                                           "currency": sorted(currency)})
+                                           "currency_mode": currency_mode,
+                                           "pair_min_reactions": pair_min_reactions})
     return tabs

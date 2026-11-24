@@ -78,17 +78,25 @@ class MetabolicNetwork(nx.DiGraph):
     def metabolites(self):
         return [n for n, d in self.nodes(data=True) if d.get("bipartite") == "metabolite"]
 
-    def metabolite_graph(self, currency=(), merge_compartments=False, directed=False):
-        """metabolite projection: A - B when A is a substrate and B a product of the same reaction; currency
-        metabolites (ids without compartment, e.g. MNXM3) are left out so they do not form fake hubs"""
-        cur = set(currency)
-        G = nx.DiGraph() if directed else nx.Graph()
+    def main_sides(self, r, currency=(), merge_compartments=False):
+        """substrate and product nodes of reaction r without its currency metabolites; currency is a
+        currency.Currency (per-reaction roles) or a set of metabolite ids removed everywhere"""
+        subs, prods = list(self.predecessors(r)), list(self.successors(r))
+        met = lambda n: self.nodes[n]["metabolite"]                       # noqa: E731
+        if hasattr(currency, "strip"):
+            L, R = currency.strip({met(n) for n in subs}, {met(n) for n in prods})
+        else:
+            cur = set(currency)
+            L, R = {met(n) for n in subs} - cur, {met(n) for n in prods} - cur
+        key = met if merge_compartments else (lambda n: n)
+        return [key(n) for n in subs if met(n) in L], [key(n) for n in prods if met(n) in R]
 
-        def key(n):
-            return self.nodes[n]["metabolite"] if merge_compartments else n
+    def metabolite_graph(self, currency=(), merge_compartments=False, directed=False):
+        """metabolite projection: A - B when A is a substrate and B a product of the same reaction, without the
+        currency metabolites of that reaction (so they do not form fake hubs)"""
+        G = nx.DiGraph() if directed else nx.Graph()
         for r in self.reactions():
-            subs = [key(m) for m in self.predecessors(r) if self.nodes[m]["metabolite"] not in cur]
-            prods = [key(m) for m in self.successors(r) if self.nodes[m]["metabolite"] not in cur]
+            subs, prods = self.main_sides(r, currency, merge_compartments)
             for a in subs:
                 for b in prods:
                     if a != b:
@@ -99,15 +107,16 @@ class MetabolicNetwork(nx.DiGraph):
         return G
 
     def reaction_graph(self, currency=()):
-        """reaction projection: r1 - r2 when they share a metabolite that is a product of one and a substrate of the
-        other (or, as MetaNetX equations are undirected, on any side); currency metabolites left out"""
-        cur = set(currency)
+        """reaction projection: r1 - r2 when they share a metabolite (MetaNetX equations are undirected) that is
+        not a currency metabolite in both of them"""
         G = nx.Graph()
         G.add_nodes_from(self.reactions())
-        for m in self.metabolites():
-            if self.nodes[m]["metabolite"] in cur:
-                continue
-            rs = list(set(self.predecessors(m)) | set(self.successors(m)))
+        inc = {}
+        for r in self.reactions():
+            subs, prods = self.main_sides(r, currency)
+            for m in set(subs) | set(prods):
+                inc.setdefault(m, []).append(r)
+        for rs in inc.values():
             for i in range(len(rs)):
                 for j in range(i + 1, len(rs)):
                     G.add_edge(rs[i], rs[j])

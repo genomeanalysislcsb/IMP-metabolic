@@ -77,7 +77,13 @@ reads per gene (metaG, metaT) from `Stats/<omic>/gene_read_count.txt`.
 **Networks.** Bipartite graphs of reactions and metabolites (`MNXM…@compartment`), edges substrate → reaction →
 product with the stoichiometry. MetaNetX equations are undirected, so reversibility is unknown until curation /
 thermodynamics are added; the scope treats reactions as reversible by default. For topology, the metabolite graph
-(substrate – product of the same reaction) leaves out the currency metabolites, which otherwise become hubs.
+(substrate – product of the same reaction) leaves out the currency metabolites, which otherwise become hubs — by
+their role in each reaction, not by identity: a cofactor pair (ATP / ADP, NAD⁺ / NADH, SAM / SAH, acetyl-CoA / CoA,
+L-glutamate / 2-oxoglutarate, …; curated plus the pairs on opposite sides of ≥ `--pair-min-reactions` MetaNetX
+reactions) and carriers / small inorganic molecules (H₂O, H⁺, phosphate, CO₂, NH₄⁺, CoA, …) are left out of a
+reaction only while it keeps another substrate and product, so the synthesis and degradation of cofactors
+(ADP + Pi → ATP, adenylosuccinate → AMP, AMP → IMP → … → uric acid) stay in the topology and the scope. The pairs and
+singles used are written to `networks/currency`; `--currency-mode global` removes a fixed list everywhere.
 
 **Co-expression networks.** `imp-metabolic coexpression` builds a weighted co-expression network (WGCNA) of the
 reaction groups across the samples of a cohort, after Villette et al. (2025): by default on the relative expression

@@ -26,6 +26,10 @@ First version, built on the metabolic-network prototype (Artem Kokorin and Marie
 - **Abundance and activity**: metaG and metaT TPM per gene and reaction group, relative expression (metaT TPM /
   metaG TPM, Roume et al. 2015; Villette et al. 2025); reaction set *active* (metaT TPM ≥ `--active-tpm`); keystone
   reactions per community (load points with high relative expression, Roume et al. 2015), table `keystones`.
+- **Currency metabolites by role** (`--currency-mode pairs`, default): cofactor pairs (curated + frequent in the
+  reference reactions, `--pair-min-reactions`) and carriers / inorganic molecules are left out of a reaction only
+  where it uses them; their own synthesis and degradation stay in the metabolite and reaction graphs and the scope;
+  table `currency`; `--currency-pairs FILE` for further pairs; `--currency-mode global` = the earlier fixed list.
 - **Currency metabolites** matched case-insensitively and extended (CoA, which MetaNetX 4.4 calls "CoA"; SAM / SAH;
   nucleoside mono-/diphosphates; quinones, ferredoxin, thioredoxin, glutathione; metal ions); `networks` applies the
   current list also to older refdb builds and takes `--currency FILE` / `--keep-currency NAMES`; the names used

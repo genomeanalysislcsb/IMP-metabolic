@@ -135,3 +135,32 @@ def test_topology_and_currency():
     have, fired = topology.scope(net, {"MNXM99", "MNXM3"})
     assert fired == {"MNXR1", "MNXR2", "MNXR3", "MNXR4"}
     assert topology.jaccard({"a", "b"}, {"b", "c"}) == 1 / 3
+
+
+def test_currency_by_role():
+    """cofactors are left out where a reaction uses them, kept in their own synthesis and degradation"""
+    from impmetabolic import currency as cx
+    mets = pd.DataFrame({"mnx_id": ["MNXM3", "MNXM7", "MNXM14", "MNXM9", "WATER", "MNXM1", "MNXM99", "MNXM100",
+                                    "MNXM50", "MNXM51", "MNXM53"],
+                         "name": ["ATP", "ADP", "AMP", "phosphate", "H2O", "H(+)", "D-glucose", "G6P", "IMP",
+                                  "NH4(+)", "adenylosuccinate"]})
+    rx = pd.DataFrame({"mnx_id": ["K", "S", "D", "A"], "equation": [
+        "1 MNXM99@MNXD1 + 1 MNXM3@MNXD1 = 1 MNXM100@MNXD1 + 1 MNXM7@MNXD1 + 1 MNXM1@MNXD1",   # hexokinase
+        "1 MNXM7@MNXD1 + 1 MNXM9@MNXD1 = 1 MNXM3@MNXD1 + 1 WATER@MNXD1",                      # ATP synthase
+        "1 MNXM14@MNXD1 + 1 WATER@MNXD1 = 1 MNXM50@MNXD1 + 1 MNXM51@MNXD1",                   # AMP deaminase
+        "1 MNXM53@MNXD1 = 1 MNXM14@MNXD1 + 1 MNXM1@MNXD1"]})                                  # AMP synthesis
+    cur, tab = cx.build(mets, rx, "pairs", min_reactions=1000)
+    assert {"MNXM3", "MNXM7"} <= set().union(*cur.pairs) and "MNXM9" in cur.singles
+    net = network.build(rx["mnx_id"], rx)
+    assert net.main_sides("K", cur) == (["MNXM99@MNXD1"], ["MNXM100@MNXD1"])          # ATP / ADP used: out
+    assert net.main_sides("S", cur) == (["MNXM7@MNXD1"], ["MNXM3@MNXD1"])             # ATP synthesis: kept
+    assert net.main_sides("D", cur) == (["MNXM14@MNXD1"], ["MNXM50@MNXD1"])           # AMP -> IMP: kept
+    assert net.main_sides("A", cur) == (["MNXM53@MNXD1"], ["MNXM14@MNXD1"])           # -> AMP: kept
+    G = net.metabolite_graph(cur)
+    assert G.has_edge("MNXM99@MNXD1", "MNXM100@MNXD1") and not G.has_edge("MNXM99@MNXD1", "MNXM7@MNXD1")
+    assert G.has_edge("MNXM7@MNXD1", "MNXM3@MNXD1") and G.has_edge("MNXM14@MNXD1", "MNXM50@MNXD1")
+    gl, _ = cx.build(mets, None, "global", extra_singles=("ATP", "ADP", "AMP"))
+    assert not net.metabolite_graph(gl).has_node("MNXM14@MNXD1")                    # global: AMP gone everywhere
+    # frequent pairs from the reference: ATP / ADP twice here
+    fp = cx.frequent_pairs(rx, min_reactions=2)
+    assert list(fp.index) == [("MNXM3", "MNXM7")]
