@@ -58,7 +58,7 @@ def test_planted_modules(tmp_path):
     assert len(set(mods)) == 3
     assert (m[["MNXR%03d" % j for j in range(90, 140)]] == "M0").mean() > 0.8     # noise unassigned
     tr = tabs["module_traits"]
-    sig = tr[(tr["test"] == "mann-whitney") & (tr["q"] < 0.01)]["module"]
+    sig = tr[(tr["test"] == "mann-whitney") & (tr["q"] < 0.01) & (tr["block"] == "all")]["module"]
     assert set(sig) == {mods[0]}                                     # only module A differs between the groups
     assert tabs["modules"]["intramodular_hub"].sum() >= 9
     assert set(read_table(str(tmp_path / "coex"), "module_summary")["module"]) == set(mods)
@@ -74,3 +74,17 @@ def test_tree_cuts(tmp_path):
         m = tabs["modules"].set_index("mnx_id")["module"]
         top = [m[["MNXR%03d" % j for j in range(30 * k, 30 * k + 30)]].value_counts().index[0] for k in range(3)]
         assert len(set(top)) == 3 and "M0" not in top, cut
+
+
+def test_traits_within_block(tmp_path):
+    """group confounded with site: within-site tests are reported next to the pooled ones"""
+    d, meta = cohort(tmp_path)
+    meta["site"] = np.where(np.arange(len(meta)) % 2 == 0, "A", "B")
+    tabs = cx.run(d, str(tmp_path / "b"), metadata=meta, trait_cols=["group"], block="site", min_module_size=10,
+                  fmt="tsv")
+    tr = tabs["module_traits"]
+    assert set(tr["block"]) == {"all", "site=A", "site=B"}
+    m = tabs["modules"].set_index("mnx_id")["module"]
+    mod_a = m[["MNXR%03d" % j for j in range(30)]].value_counts().index[0]
+    w = tr[(tr["module"] == mod_a) & (tr["test"] == "mann-whitney")]
+    assert (w["p"] < 0.01).all() and len(w) == 3                  # pooled and in each site

@@ -18,7 +18,8 @@ branch cut after the Dynamic Tree method (dynamic_cut, deepSplit 2 as in cutreeH
 paper); eigengenes = first principal component; module membership kME, intramodular connectivity kWithin, hubs
 (top 5 % kTotal) and intramodular hubs (top 10 % kWithin per module); module diversity (Shannon index of the summed
 values of the module's members, as in the paper); module-trait association with sample metadata (categorical: point-
-biserial correlation per level and Kruskal-Wallis; numeric: Spearman), BH-FDR over all modules and traits.
+biserial correlation per level and Kruskal-Wallis; numeric: Spearman), over all samples and, with --block, within
+each block level (groups confounded with sites), BH-FDR over all modules, traits and blocks.
 """
 import logging
 import os
@@ -282,32 +283,48 @@ def shannon(v):
     return float(-(p * np.log(p)).sum())
 
 
-def traits(ME, meta, columns):
+def _trait_tests(ME, x, col, block):
+    rows = []
+    num = pd.to_numeric(x, errors="coerce")
+    if num.notna().sum() >= max(5, 0.8 * x.notna().sum()) and num.nunique() > 2:
+        for m in ME.columns:
+            ok = num.notna()
+            if ok.sum() >= 5:
+                r, p = stats.spearmanr(ME.loc[ok, m], num[ok])
+                rows.append((m, col, block, "", "spearman", r, p))
+        return rows
+    lv = [v for v in sorted(x.dropna().astype(str).unique()) if (x.astype(str) == v).sum() >= 2]
+    if len(lv) < 2:
+        return rows
+    for m in ME.columns:
+        groups = [ME.loc[x.astype(str) == v, m].values for v in lv]
+        p = stats.kruskal(*groups).pvalue if len(lv) > 2 else stats.mannwhitneyu(*groups).pvalue
+        rows.append((m, col, block, "", "kruskal" if len(lv) > 2 else "mann-whitney", np.nan, p))
+        for v in lv:
+            ind = (x.astype(str) == v).astype(float)
+            ok = x.notna()
+            r, p = stats.pearsonr(ME.loc[ok, m], ind[ok])
+            rows.append((m, col, block, v, "point-biserial", r, p))
+    return rows
+
+
+def traits(ME, meta, columns, block=None):
+    """module eigengenes vs traits over all samples (block 'all') and, with a block (e.g. site), within each block
+    level as well: when groups and blocks are confounded (one disease per site), only the within-block tests
+    separate the group from the site"""
     rows = []
     for col in columns:
         if col not in meta.columns:
             continue
         x = meta[col].reindex(ME.index)
-        num = pd.to_numeric(x, errors="coerce")
-        if num.notna().sum() >= max(5, 0.8 * x.notna().sum()) and num.nunique() > 2:
-            for m in ME.columns:
-                ok = num.notna()
-                r, p = stats.spearmanr(ME.loc[ok, m], num[ok])
-                rows.append((m, col, "", "spearman", r, p))
-            continue
-        lv = [v for v in sorted(x.dropna().astype(str).unique()) if (x.astype(str) == v).sum() >= 2]
-        if len(lv) < 2:
-            continue
-        for m in ME.columns:
-            groups = [ME.loc[x.astype(str) == v, m].values for v in lv]
-            p = stats.kruskal(*groups).pvalue if len(lv) > 2 else stats.mannwhitneyu(*groups).pvalue
-            rows.append((m, col, "", "kruskal" if len(lv) > 2 else "mann-whitney", np.nan, p))
-            for v in lv:
-                ind = (x.astype(str) == v).astype(float)
-                ok = x.notna()
-                r, p = stats.pearsonr(ME.loc[ok, m], ind[ok])
-                rows.append((m, col, v, "point-biserial", r, p))
-    df = pd.DataFrame(rows, columns=["module", "trait", "level", "test", "r", "p"])
+        rows += _trait_tests(ME, x, col, "all")
+        if block and block in meta.columns and col != block:
+            b = meta[block].reindex(ME.index).astype(str)
+            for lv in sorted(b[x.notna()].unique()):
+                idx = b.index[(b == lv) & x.notna()]
+                if len(idx) >= 6:
+                    rows += _trait_tests(ME.loc[idx], x.loc[idx], col, "%s=%s" % (block, lv))
+    df = pd.DataFrame(rows, columns=["module", "trait", "block", "level", "test", "r", "p"])
     if len(df):
         df["q"] = bh(df["p"].fillna(1).values)
     return df
@@ -315,7 +332,7 @@ def traits(ME, meta, columns):
 
 def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=None, how="yeo-johnson",
         method="pearson", power=None, r2=0.8, min_module_size=20, merge_diss=0.18, metadata=None,
-        trait_cols=(), fmt="auto", tree_cut="dynamic", deep_split=2):
+        trait_cols=(), fmt="auto", tree_cut="dynamic", deep_split=2, block=None):
     com = read_table(mapping, "community_reactions")
     mg, mt = matrices(com, confidence)
     X, value, pc, prev = values(mg, mt, value, min_prev, pseudocount)
@@ -370,7 +387,7 @@ def run(mapping, out, value="auto", confidence="all", min_prev=0.5, pseudocount=
     if metadata is not None and len(trait_cols):
         meta = metadata.set_index("sample_id")
         meta.index = meta.index.astype(str)
-        tabs["module_traits"] = traits(ME, meta, trait_cols)
+        tabs["module_traits"] = traits(ME, meta, trait_cols, block)
     rows = {}
     for k, v in tabs.items():
         write_table(v, out, k, fmt)
